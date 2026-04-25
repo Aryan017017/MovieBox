@@ -151,6 +151,25 @@ function makeCard(item, opts = {}) {
   card.addEventListener("click", () => openModal(item));
   card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openModal(item, { autoplay: true }); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
+
+  let hoverTimer;
+  card.addEventListener("mouseenter", () => {
+    hoverTimer = setTimeout(async () => {
+      try {
+        const key = await fetchTrailerKey(item);
+        if (!key || !card.matches(":hover")) return;
+        if (card.querySelector(".card-trailer")) return;
+        const wrap = document.createElement("div");
+        wrap.className = "card-trailer";
+        wrap.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>`;
+        card.appendChild(wrap);
+      } catch {}
+    }, 600);
+  });
+  card.addEventListener("mouseleave", () => {
+    clearTimeout(hoverTimer);
+    card.querySelector(".card-trailer")?.remove();
+  });
   return card;
 }
 
