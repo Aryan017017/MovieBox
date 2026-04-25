@@ -163,7 +163,7 @@ function makeCard(item, opts = {}) {
         wrap.className = "card-trailer";
         const renderTrailer = () => {
           wrap.innerHTML = `
-            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>
+            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>
             <button class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
           wrap.querySelector(".card-mute").addEventListener("click", (e) => {
             e.stopPropagation();
@@ -261,7 +261,7 @@ async function renderHero(item) {
     const key = await fetchTrailerKey(item);
     if (key) {
       const muteParam = heroMuted ? 1 : 0;
-      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>`;
+      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
     }
   } catch {}
 }
@@ -473,7 +473,7 @@ async function openModal(item, opts = {}) {
   try {
     const key = await fetchTrailerKey(item);
     if (key) {
-      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>`;
+      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
     }
   } catch {}
 
@@ -647,7 +647,7 @@ $("#modal-mute-btn").addEventListener("click", () => {
   $("#modal-mute-btn").textContent = modalMuted ? "🔇" : "🔊";
   if (currentItem && !$("#player-wrap").classList.contains("active")) {
     fetchTrailerKey(currentItem).then(key => {
-      if (key) $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>`;
+      if (key) $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
     });
   }
 });
