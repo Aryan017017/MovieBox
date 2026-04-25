@@ -149,7 +149,7 @@ function makeCard(item, opts = {}) {
       <div class="title">${escapeHTML(item.title || "")}</div>
     </div>`;
   card.addEventListener("click", () => openModal(item));
-  card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openModal(item, { autoplay: true }); });
+  card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openModal(item); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
 
   let hoverTimer;
