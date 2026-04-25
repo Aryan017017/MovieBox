@@ -154,6 +154,21 @@ button { font-family: inherit; }
   border-left: 3px solid #fff; font-size: 16px;
 }
 
+/* Hide hero on grid pages */
+body.no-hero #hero { display: none; }
+body.no-hero #rows { margin-top: 80px; padding-top: 20px; }
+
+/* Search grid */
+.search-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 6px; padding: 0 4%;
+}
+.search-grid .card { flex: none; min-width: 0; width: 100%; aspect-ratio: 16/9; }
+.search-header { padding: 0 4%; margin-bottom: 18px; font-size: 16px; color: var(--muted); }
+.search-header strong { color: #fff; }
+@media (max-width: 1200px) { .search-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 800px)  { .search-grid { grid-template-columns: repeat(2, 1fr); } }
+
 /* ============ Rows ============ */
 #rows { padding: 20px 0 60px; margin-top: -60px; position: relative; z-index: 3; }
 .row { margin: 28px 0; position: relative; }

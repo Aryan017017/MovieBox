@@ -398,14 +398,26 @@ function showMyList() {
 
 async function searchAll(query) {
   setActive(null);
-  $("#hero-bg").style.backgroundImage = ""; $("#hero-trailer").innerHTML = ""; $("#hero-content").innerHTML = "";
+  document.body.classList.add("no-hero");
   const rows = $("#rows");
-  rows.innerHTML = ""; rows.appendChild(skeletonRow());
+  rows.innerHTML = `<div class="search-header">Searching for <strong>"${escapeHTML(query)}"</strong>…</div>`;
   try {
     const data = await tmdb("/search/multi", { query });
-    const items = data.results.filter(r => r.media_type === "movie" || r.media_type === "tv").map(r => normalizeTMDB(r));
+    const items = data.results
+      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && (r.poster_path || r.backdrop_path))
+      .map(r => normalizeTMDB(r));
     rows.innerHTML = "";
-    rows.appendChild(renderRow(`Results for "${query}"`, items));
+    if (!items.length) {
+      rows.innerHTML = `
+        <div class="search-header">Your search for <strong>"${escapeHTML(query)}"</strong> did not have any matches.</div>
+        <div class="empty" style="text-align:center; padding:40px 4%;">Suggestions:<br><br>· Try different keywords<br>· Look for a movie, TV show or person<br>· Try a more general keyword</div>`;
+      return;
+    }
+    rows.innerHTML = `<div class="search-header">Top results for <strong>"${escapeHTML(query)}"</strong></div>`;
+    const grid = document.createElement("div");
+    grid.className = "search-grid";
+    items.forEach(it => grid.appendChild(makeCard(it)));
+    rows.appendChild(grid);
   } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
 }
 
@@ -681,6 +693,7 @@ $$("#navbar [data-nav]").forEach(a => {
     e.preventDefault();
     const nav = a.dataset.nav;
     $("#search").value = "";
+    document.body.classList.remove("no-hero");
     if (nav === "home") showHome();
     else if (nav === "movies") showCategory("movie");
     else if (nav === "tv") showCategory("tv");
@@ -694,7 +707,7 @@ let searchTimer;
 $("#search").addEventListener("input", e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (!q) { showHome(); return; }
+  if (!q) { document.body.classList.remove("no-hero"); showHome(); return; }
   searchTimer = setTimeout(() => searchAll(q), 350);
 });
 
