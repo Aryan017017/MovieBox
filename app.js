@@ -404,7 +404,7 @@ async function searchAll(query) {
   try {
     const data = await tmdb("/search/multi", { query });
     const items = data.results
-      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && (r.poster_path || r.backdrop_path))
+      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.backdrop_path)
       .map(r => normalizeTMDB(r));
     rows.innerHTML = "";
     if (!items.length) {
