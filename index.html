@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Streamly</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header id="navbar">
+  <div class="nav-left">
+    <a href="#" class="logo" data-nav="home">STREAMLY</a>
+    <nav>
+      <a href="#" data-nav="home" class="active">Home</a>
+      <a href="#" data-nav="movies">Movies</a>
+      <a href="#" data-nav="tv">TV Shows</a>
+      <a href="#" data-nav="anime">Anime</a>
+      <a href="#" data-nav="mylist">My List</a>
+    </nav>
+  </div>
+  <div class="nav-right">
+    <input id="search" type="search" placeholder="Search movies, shows, anime..." />
+  </div>
+</header>
+
+<main id="content">
+  <section id="hero" class="hero"></section>
+  <div id="rows"></div>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-body">
+    <button class="modal-close" aria-label="Close">×</button>
+    <div id="player-wrap" class="player-wrap"></div>
+    <div class="modal-info">
+      <h2 id="modal-title"></h2>
+      <div class="modal-meta">
+        <span id="modal-year"></span>
+        <span id="modal-rating"></span>
+        <span id="modal-runtime"></span>
+      </div>
+      <p id="modal-overview"></p>
+      <div id="episode-picker" class="episode-picker hidden">
+        <div class="picker-row">
+          <label>Season
+            <select id="season-select"></select>
+          </label>
+          <label>Episode
+            <select id="episode-select"></select>
+          </label>
+          <button id="play-episode" class="btn">▶ Play Episode</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="add-list" class="btn-secondary">+ My List</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
