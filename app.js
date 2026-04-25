@@ -161,7 +161,17 @@ function makeCard(item, opts = {}) {
         if (card.querySelector(".card-trailer")) return;
         const wrap = document.createElement("div");
         wrap.className = "card-trailer";
-        wrap.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>`;
+        const renderTrailer = () => {
+          wrap.innerHTML = `
+            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1" allow="autoplay; encrypted-media"></iframe>
+            <button class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
+          wrap.querySelector(".card-mute").addEventListener("click", (e) => {
+            e.stopPropagation();
+            cardMuted = !cardMuted;
+            renderTrailer();
+          });
+        };
+        renderTrailer();
         card.appendChild(wrap);
       } catch {}
     }, 600);
@@ -220,6 +230,7 @@ function skeletonRow() {
 // ---------- Hero (with auto-trailer) ----------
 let heroMuted = true;
 let heroItem = null;
+let cardMuted = true;
 
 async function renderHero(item) {
   heroItem = item;
