@@ -281,9 +281,31 @@ $("#mute-btn").addEventListener("click", () => {
   if (heroItem) renderHero(heroItem);
 });
 
+function stopHeroTrailer() {
+  $("#hero-trailer").innerHTML = "";
+  heroItem = null;
+}
+
+// Pause hero audio when scrolled out of view
+const heroObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (!heroItem) return;
+    const iframe = $("#hero-trailer iframe");
+    if (!iframe) return;
+    if (!e.isIntersecting) {
+      iframe.dataset.src = iframe.src;
+      iframe.src = "";
+    } else if (iframe.dataset.src && !iframe.src) {
+      iframe.src = iframe.dataset.src;
+    }
+  });
+}, { threshold: 0.2 });
+heroObserver.observe($("#hero"));
+
 // ---------- Pages ----------
 async function showHome() {
   setActive("home");
+  stopHeroTrailer();
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 4; i++) rows.appendChild(skeletonRow());
   try {
@@ -324,6 +346,7 @@ async function showHome() {
 
 async function showCategory(type) {
   setActive(type);
+  stopHeroTrailer();
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 3; i++) rows.appendChild(skeletonRow());
   try {
@@ -362,6 +385,7 @@ async function showCategory(type) {
 
 async function showNewPopular() {
   setActive("new");
+  stopHeroTrailer();
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 3; i++) rows.appendChild(skeletonRow());
   try {
@@ -384,7 +408,8 @@ async function showNewPopular() {
 
 function showMyList() {
   setActive("mylist");
-  $("#hero-bg").style.backgroundImage = ""; $("#hero-trailer").innerHTML = ""; $("#hero-content").innerHTML = "";
+  $("#hero-bg").style.backgroundImage = ""; $("#hero-content").innerHTML = "";
+  stopHeroTrailer();
   const rows = $("#rows");
   rows.innerHTML = "";
   if (!myList.length) {
@@ -399,6 +424,7 @@ function showMyList() {
 async function searchAll(query) {
   setActive(null);
   document.body.classList.add("no-hero");
+  stopHeroTrailer();
   const rows = $("#rows");
   rows.innerHTML = `<div class="search-header">Searching for <strong>"${escapeHTML(query)}"</strong>…</div>`;
   try {
@@ -450,6 +476,9 @@ async function openModal(item, opts = {}) {
   $("#modal").classList.remove("hidden");
   $("#modal").scrollTop = 0;
   document.body.style.overflow = "hidden";
+  // Pause hero audio so it doesn't fight the modal trailer
+  const heroIframe = $("#hero-trailer iframe");
+  if (heroIframe) { heroIframe.dataset.src = heroIframe.src; heroIframe.src = ""; }
 
   const bg = item.backdrop || item.poster;
   $("#modal-bg").style.backgroundImage = bg ? `url("${bg}")` : "";
@@ -626,6 +655,9 @@ function closeModal() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  // Restore hero trailer if it was paused
+  const heroIframe = $("#hero-trailer iframe");
+  if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
 }
 $(".modal-close").addEventListener("click", closeModal);
 $(".modal-backdrop").addEventListener("click", closeModal);
