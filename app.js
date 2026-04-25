@@ -455,6 +455,7 @@ async function openModal(item, opts = {}) {
   $("#modal-bg").style.backgroundImage = bg ? `url("${bg}")` : "";
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
+  $(".modal-body").classList.remove("playing");
   $("#modal-title").textContent = item.title;
   $("#modal-match").textContent = `${pseudoMatch(item)}% Match`;
   $("#modal-year").textContent = item.year || "";
@@ -592,11 +593,12 @@ function makeSimilarCard(item) {
 function startPlayer(item, ctx = {}) {
   const url = buildPlayerURL(item, ctx);
   $("#modal-trailer").innerHTML = ""; // stop trailer audio
+  $(".modal-body").classList.add("playing");
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
     allowfullscreen referrerpolicy="no-referrer"></iframe>`;
-  $("#player-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#modal").scrollTop = 0;
 }
 
 function buildPlayerURL(item, ctx = {}) {
@@ -621,6 +623,7 @@ function closeModal() {
   $("#modal").classList.add("hidden");
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
+  $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
 }
