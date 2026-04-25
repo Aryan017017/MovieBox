@@ -416,7 +416,20 @@ async function searchAll(query) {
     rows.innerHTML = `<div class="search-header">Top results for <strong>"${escapeHTML(query)}"</strong></div>`;
     const grid = document.createElement("div");
     grid.className = "search-grid";
-    items.forEach(it => grid.appendChild(makeCard(it)));
+    items.forEach(it => {
+      const cell = document.createElement("div");
+      cell.className = "search-cell";
+      cell.appendChild(makeCard(it));
+      const meta = document.createElement("div");
+      meta.className = "search-meta";
+      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span><span>${pseudoMatch(it)}% Match</span>`;
+      const title = document.createElement("div");
+      title.className = "search-title";
+      title.textContent = it.title;
+      cell.appendChild(title);
+      cell.appendChild(meta);
+      grid.appendChild(cell);
+    });
     rows.appendChild(grid);
   } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
 }
