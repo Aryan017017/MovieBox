@@ -318,9 +318,9 @@ body.no-hero #rows { margin-top: 80px; padding-top: 20px; }
 }
 .modal-hero {
   position: relative; padding-bottom: 56.25%; height: 0;
-  background: #000;
+  background: var(--bg-2); overflow: hidden;
 }
-.modal-bg, .modal-trailer { position: absolute; inset: 0; }
+.modal-bg, .modal-trailer { position: absolute; inset: 0; overflow: hidden; }
 .modal-bg { background-size: cover; background-position: center; }
 .modal-trailer iframe {
   width: 100%; height: 100%; border: 0;
@@ -328,11 +328,13 @@ body.no-hero #rows { margin-top: 80px; padding-top: 20px; }
 }
 .modal-hero-fade {
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 40%, var(--bg-2));
+  background:
+    linear-gradient(180deg, transparent 30%, rgba(24,24,24,0.6) 65%, var(--bg-2) 100%),
+    linear-gradient(0deg,  rgba(24,24,24,0.4), transparent 40%);
   pointer-events: none;
 }
 .modal-hero-content {
-  position: absolute; left: 6%; right: 6%; bottom: 24px; z-index: 2;
+  position: absolute; left: 6%; right: 6%; bottom: 28px; z-index: 2;
 }
 .modal-hero-content h2 { font-size: 36px; font-weight: 800; margin-bottom: 18px; text-shadow: 2px 2px 6px rgba(0,0,0,0.6); }
 .modal-hero-buttons { display: flex; gap: 10px; align-items: center; }
@@ -346,7 +348,7 @@ body.no-hero #rows { margin-top: 80px; padding-top: 20px; }
 .modal-body.playing .modal-hero { display: none; }
 .player-wrap iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
 
-.modal-info { padding: 24px 6% 36px; }
+.modal-info { padding: 0 6% 36px; margin-top: -8px; background: var(--bg-2); position: relative; z-index: 1; }
 .modal-info-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin-bottom: 28px; }
 .modal-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; font-size: 14px; color: #ddd; }
 .modal-meta .match { color: var(--green); font-weight: 600; }
