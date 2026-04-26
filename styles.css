@@ -442,10 +442,9 @@ button { font-family: inherit; }
 .cast-section h3 { font-size: 22px; font-weight: 700; margin-bottom: 14px; letter-spacing: -0.01em; }
 .cast-row {
   display: flex; gap: 14px; overflow-x: auto;
-  padding: 4px 0 14px; scrollbar-width: thin;
+  padding: 4px 0 8px; scrollbar-width: none;
 }
-.cast-row::-webkit-scrollbar { height: 6px; }
-.cast-row::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+.cast-row::-webkit-scrollbar { display: none; }
 .cast-card {
   flex: 0 0 110px; cursor: pointer;
   transition: transform 0.2s var(--ease);
