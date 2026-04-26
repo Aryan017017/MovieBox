@@ -253,7 +253,7 @@ async function renderHero(item) {
       <button class="btn" id="hero-play">▶ Play</button>
       <button class="btn-secondary" id="hero-info">ⓘ More Info</button>
     </div>`;
-  $("#hero-play").addEventListener("click", () => openModal(item, { autoplay: true }));
+  $("#hero-play").addEventListener("click", () => openModal(item));
   $("#hero-info").addEventListener("click", () => openModal(item));
 
   // Try to fetch trailer
