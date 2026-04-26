@@ -144,7 +144,6 @@ function makeCard(item, opts = {}) {
         <div class="add-mini">+</div>
       </div>
       <div class="row2">
-        <span class="match">${pseudoMatch(item)}% Match</span>
         <span class="age-mini">${pseudoAge(item)}</span>
         <span>${item.year || ""}</span>
       </div>
@@ -247,7 +246,6 @@ async function renderHero(item) {
   $("#hero-content").innerHTML = `
     <div class="hero-title-slot"><h1>${escapeHTML(item.title)}</h1></div>
     <div class="badges">
-      <span class="match">${match}% Match</span>
       <span>${item.year || ""}</span>
     </div>
     <p>${escapeHTML(item.overview || "")}</p>
@@ -513,7 +511,7 @@ async function searchAll(query) {
       cell.appendChild(makeCard(it));
       const meta = document.createElement("div");
       meta.className = "search-meta";
-      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span><span>${pseudoMatch(it)}% Match</span>`;
+      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span>`;
       const title = document.createElement("div");
       title.className = "search-title";
       title.textContent = it.title;
@@ -558,7 +556,7 @@ async function openModal(item, opts = {}) {
       $("#modal-title").style.backgroundImage = `url("${logo}")`;
     }
   });
-  $("#modal-match").textContent = `${pseudoMatch(item)}% Match`;
+  $("#modal-match").textContent = "";
   $("#modal-year").textContent = item.year || "";
   $("#modal-age").textContent = pseudoAge(item);
   $("#modal-runtime").textContent = "";
@@ -681,7 +679,6 @@ function makeSimilarCard(item) {
     <div class="sim-img" style="background-image:url('${bg || ""}')"></div>
     <div class="sim-body">
       <div class="sim-meta">
-        <span class="match">${pseudoMatch(item)}% Match</span>
         <span>${item.year || ""}</span>
       </div>
       <div class="sim-title">${escapeHTML(item.title)}</div>
