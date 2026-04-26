@@ -13,12 +13,17 @@ const YT = "https://www.youtube.com/embed/";
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
-const PROFILES = [
-  { name: "Aryan",  color: "#e50914", initial: "A" },
-  { name: "Family", color: "#0080ff", initial: "F" },
-  { name: "Kids",   color: "#f5c518", initial: "K" },
-  { name: "Guest",  color: "#46d369", initial: "G" },
+const DEFAULT_PROFILES = [
+  { id: "p1", name: "Aryan",  color: "#e50914" },
+  { id: "p2", name: "Family", color: "#0080ff" },
+  { id: "p3", name: "Kids",   color: "#f5c518" },
+  { id: "p4", name: "Guest",  color: "#46d369" },
 ];
+const PROFILE_COLORS = ["#e50914","#0080ff","#f5c518","#46d369","#9333ea","#ec4899","#06b6d4","#f97316","#84cc16","#64748b"];
+const STORAGE_PROFILES = "moviebox:profiles";
+let PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
+function saveProfiles() { saveJSON(STORAGE_PROFILES, PROFILES); }
+function profileInitial(p) { return (p.name || "?").trim().charAt(0).toUpperCase(); }
 
 const GENRES_MOVIE = [
   { id: 28,    name: "Action" },
@@ -36,6 +41,7 @@ const STORAGE = {
   progress: "moviebox:progress",
   list: "moviebox:mylist",
   profile: "moviebox:profile",
+  onboarded: "moviebox:onboarded",
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
@@ -411,6 +417,16 @@ async function showHome() {
     const continueItems = getContinueWatching();
     if (continueItems.length) rows.appendChild(renderRow("Continue Watching", continueItems, { showProgress: true }));
     if (myList.length) rows.appendChild(renderRow("My List", myList));
+
+    // Recommended for You (lazy after main content)
+    getRecommendedForYou().then(recs => {
+      if (recs.length) {
+        const row = renderRow("Recommended for You", recs);
+        // Insert near the top, just after Continue Watching / My List if present, else first
+        const ref = rows.querySelector(".row:nth-child(2)") || rows.querySelector(".row");
+        if (ref) rows.insertBefore(row, ref); else rows.appendChild(row);
+      }
+    }).catch(() => {});
 
     rows.appendChild(renderRow("Trending Now", trendingItems));
     rows.appendChild(renderRow(`Top 10 Today`, trendingDay.results.slice(0, 10).map(r => normalizeTMDB(r)), { top10: true }));
@@ -810,6 +826,28 @@ async function openModal(item, opts = {}) {
       $("#modal-cast").textContent = credits.cast.slice(0, 4).map(c => c.name).join(", ") || "—";
       $("#modal-genres").textContent = (details.genres || []).map(g => g.name).join(", ");
 
+      // Crew: director, writers, studio
+      const sideEl = $(".modal-info-side");
+      // Remove any prior dynamic lines
+      sideEl.querySelectorAll(".info-line.dynamic").forEach(n => n.remove());
+      const crew = credits.crew || [];
+      const directors = item.type === "movie"
+        ? crew.filter(c => c.job === "Director").map(c => c.name)
+        : (details.created_by || []).map(c => c.name);
+      const writers = [...new Set(crew.filter(c => c.department === "Writing" || c.job === "Writer" || c.job === "Screenplay").map(c => c.name))];
+      const studio = (details.production_companies || [])[0]?.name;
+      const directorLabel = item.type === "movie" ? "Director" : "Creator";
+      const addLine = (label, val) => {
+        if (!val) return;
+        const d = document.createElement("div");
+        d.className = "info-line dynamic";
+        d.innerHTML = `<span class="label">${label}:</span> <span>${escapeHTML(val)}</span>`;
+        sideEl.appendChild(d);
+      };
+      if (directors.length) addLine(directors.length > 1 ? directorLabel + "s" : directorLabel, directors.slice(0, 2).join(", "));
+      if (writers.length) addLine(writers.length > 1 ? "Writers" : "Writer", writers.slice(0, 3).join(", "));
+      if (studio) addLine("Studio", studio);
+
       // Cast row with images
       const castRow = $("#cast-row");
       castRow.innerHTML = "";
@@ -1005,15 +1043,34 @@ $("#modal-mute-btn").addEventListener("click", () => {
 // ---------- My List ----------
 function toggleList(item) {
   const idx = myList.findIndex(x => x.id === item.id && x.type === item.type);
-  if (idx >= 0) myList.splice(idx, 1);
-  else myList.push({
-    id: item.id, type: item.type, title: item.title,
-    poster: item.poster, backdrop: item.backdrop, backdropMd: item.backdropMd,
-    overview: item.overview, year: item.year, rating: item.rating,
-    isMovie: item.isMovie, episodes: item.episodes,
-  });
+  if (idx >= 0) {
+    myList.splice(idx, 1);
+    showToast(`Removed "${item.title}" from My List`);
+  } else {
+    myList.push({
+      id: item.id, type: item.type, title: item.title,
+      poster: item.poster, backdrop: item.backdrop, backdropMd: item.backdropMd,
+      overview: item.overview, year: item.year, rating: item.rating,
+      isMovie: item.isMovie, episodes: item.episodes,
+    });
+    showToast(`Added "${item.title}" to My List`);
+  }
   saveJSON(STORAGE.list, myList);
   updateListButton();
+}
+
+// ---------- Toast ----------
+let toastTimer;
+function showToast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  requestAnimationFrame(() => el.classList.add("show"));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.classList.add("hidden"), 300);
+  }, 2500);
 }
 function updateListButton() {
   if (!currentItem) return;
@@ -1040,6 +1097,34 @@ window.addEventListener("message", (event) => {
   saveJSON(STORAGE.progress, progressMap);
 });
 function progressKey(item) { return `${item.type}:${item.id}`; }
+async function getRecommendedForYou() {
+  // Seed from My List + most recent Continue Watching
+  const seeds = [];
+  const seen = new Set();
+  const cw = getContinueWatching().slice(0, 3);
+  cw.forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "anime") { seen.add(k); seeds.push(it); } });
+  myList.slice(-3).forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "anime") { seen.add(k); seeds.push(it); } });
+  if (!seeds.length) return [];
+
+  const recs = new Map(); // key -> { item, score }
+  await Promise.all(seeds.slice(0, 5).map(async (s, i) => {
+    try {
+      const data = await tmdb(`/${s.type}/${s.id}/recommendations`);
+      data.results.forEach((r, j) => {
+        if (!r.backdrop_path || !r.poster_path) return;
+        const key = `${s.type}:${r.id}`;
+        if (seen.has(key)) return;
+        const item = normalizeTMDB(r, s.type);
+        // Score: higher for earlier seeds and earlier results
+        const score = (5 - i) * 10 + (20 - j) + (parseFloat(item.rating) || 0);
+        const existing = recs.get(key);
+        if (!existing || score > existing.score) recs.set(key, { item, score });
+      });
+    } catch {}
+  }));
+  return [...recs.values()].sort((a, b) => b.score - a.score).slice(0, 20).map(x => x.item);
+}
+
 function getContinueWatching() {
   return Object.entries(progressMap)
     .filter(([, v]) => v.progress > 1 && v.progress < 95)
@@ -1283,26 +1368,125 @@ window.addEventListener("scroll", () => {
 });
 
 // ---------- Profile ----------
+let manageMode = false;
+let editingProfileId = null;
+
 function renderProfileScreen() {
   const list = $("#profile-list"); list.innerHTML = "";
   PROFILES.forEach(p => {
     const card = document.createElement("div");
     card.className = "profile-card";
     card.innerHTML = `
-      <div class="avatar" style="background:${p.color}">${p.initial}</div>
-      <div class="name">${p.name}</div>`;
-    card.addEventListener("click", () => selectProfile(p));
+      <div class="avatar" style="background:${p.color}">${escapeHTML(profileInitial(p))}</div>
+      <div class="name">${escapeHTML(p.name)}</div>
+      <button class="edit-pencil" title="Edit">✎</button>`;
+    card.addEventListener("click", (e) => {
+      if (e.target.classList.contains("edit-pencil") || manageMode) {
+        openProfileEdit(p);
+      } else {
+        selectProfile(p);
+      }
+    });
     list.appendChild(card);
   });
+  // Add-profile tile (max 6)
+  if (PROFILES.length < 6) {
+    const add = document.createElement("div");
+    add.className = "profile-card add-card";
+    add.innerHTML = `<div class="avatar">+</div><div class="name">Add Profile</div>`;
+    add.addEventListener("click", () => openProfileEdit(null));
+    list.appendChild(add);
+  }
 }
+
+function openProfileEdit(profile) {
+  editingProfileId = profile?.id || null;
+  $("#profile-edit-title").textContent = profile ? "Edit Profile" : "Create Profile";
+  $("#profile-name-input").value = profile?.name || "";
+  $("#profile-edit-delete").style.display = (profile && PROFILES.length > 1) ? "" : "none";
+  // Color picker
+  const picker = $("#color-picker");
+  picker.innerHTML = "";
+  const currentColor = profile?.color || PROFILE_COLORS[0];
+  PROFILE_COLORS.forEach(c => {
+    const sw = document.createElement("div");
+    sw.className = "color-swatch" + (c === currentColor ? " active" : "");
+    sw.style.background = c;
+    sw.dataset.color = c;
+    sw.addEventListener("click", () => {
+      $$(".color-swatch", picker).forEach(s => s.classList.remove("active"));
+      sw.classList.add("active");
+    });
+    picker.appendChild(sw);
+  });
+  $("#profile-edit-modal").classList.remove("hidden");
+  setTimeout(() => $("#profile-name-input").focus(), 50);
+}
+
+function closeProfileEdit() {
+  $("#profile-edit-modal").classList.add("hidden");
+  editingProfileId = null;
+}
+
+$("#profile-edit-save").addEventListener("click", () => {
+  const name = $("#profile-name-input").value.trim();
+  if (!name) { showToast("Name required"); return; }
+  const color = $(".color-swatch.active")?.dataset.color || PROFILE_COLORS[0];
+  if (editingProfileId) {
+    const p = PROFILES.find(x => x.id === editingProfileId);
+    if (p) { p.name = name; p.color = color; }
+  } else {
+    PROFILES.push({ id: "p" + Date.now(), name, color });
+  }
+  saveProfiles();
+  renderProfileScreen();
+  closeProfileEdit();
+});
+
+$("#profile-edit-delete").addEventListener("click", () => {
+  if (!editingProfileId || PROFILES.length <= 1) return;
+  if (!confirm("Delete this profile? Watch history and list won't be removed.")) return;
+  PROFILES = PROFILES.filter(p => p.id !== editingProfileId);
+  saveProfiles();
+  if (activeProfile?.id === editingProfileId) {
+    activeProfile = null;
+    localStorage.removeItem(STORAGE.profile);
+  }
+  renderProfileScreen();
+  closeProfileEdit();
+});
+
+$("#profile-edit-cancel").addEventListener("click", closeProfileEdit);
+$(".profile-edit-backdrop").addEventListener("click", closeProfileEdit);
+$("#profile-name-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#profile-edit-save").click();
+  if (e.key === "Escape") closeProfileEdit();
+});
+
+$("#manage-profiles").addEventListener("click", () => {
+  manageMode = !manageMode;
+  document.body.classList.toggle("profile-manage-mode", manageMode);
+  $("#manage-profiles").textContent = manageMode ? "Done" : "Manage Profiles";
+});
 function selectProfile(p) {
   activeProfile = p; saveJSON(STORAGE.profile, p);
+  manageMode = false; document.body.classList.remove("profile-manage-mode");
+  $("#manage-profiles").textContent = "Manage Profiles";
   $("#profile-screen").classList.add("hidden");
   $("#app").classList.remove("hidden");
   $("#profile-avatar-mini").style.background = p.color;
-  $("#profile-avatar-mini").textContent = p.initial;
+  $("#profile-avatar-mini").textContent = profileInitial(p);
   $("#profile-avatar-mini").style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;`;
   route();
+  maybeShowOnboarding();
+}
+
+function maybeShowOnboarding() {
+  if (localStorage.getItem(STORAGE.onboarded)) return;
+  setTimeout(() => {
+    showToast("Tip: hover a poster to preview · type to search · Esc closes any modal");
+    localStorage.setItem(STORAGE.onboarded, "1");
+  }, 1200);
 }
 $("#profile-pill").addEventListener("click", e => {
   if (e.target.closest(".profile-menu")) return;

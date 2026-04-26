@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=23" />
+<link rel="stylesheet" href="styles.css?v=24" />
 </head>
 <body>
 
@@ -25,6 +25,21 @@
   <div class="profile-inner">
     <h1>Who's watching?</h1>
     <div id="profile-list" class="profile-list"></div>
+    <button id="manage-profiles" class="profile-manage">Manage Profiles</button>
+  </div>
+</div>
+
+<div id="profile-edit-modal" class="profile-edit-modal hidden">
+  <div class="profile-edit-backdrop"></div>
+  <div class="profile-edit-body">
+    <h2 id="profile-edit-title">Edit Profile</h2>
+    <input id="profile-name-input" type="text" placeholder="Name" maxlength="20" />
+    <div class="color-picker" id="color-picker"></div>
+    <div class="profile-edit-buttons">
+      <button id="profile-edit-save" class="btn">Save</button>
+      <button id="profile-edit-delete" class="btn-secondary">Delete</button>
+      <button id="profile-edit-cancel" class="btn-secondary">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -104,6 +119,8 @@
 </div>
 
 <!-- Modal -->
+<div id="toast" class="toast hidden"></div>
+
 <div id="modal" class="modal hidden">
   <div class="modal-backdrop"></div>
   <div class="modal-body">
@@ -164,6 +181,6 @@
   </div>
 </div>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
