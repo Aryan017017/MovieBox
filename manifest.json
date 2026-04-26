@@ -1,0 +1,15 @@
+{
+  "name": "MovieBox",
+  "short_name": "MovieBox",
+  "description": "Watch movies, TV shows, and anime",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["entertainment", "video"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -130,13 +130,29 @@ function escapeHTML(s) {
 function makeCard(item, opts = {}) {
   const card = document.createElement("div");
   card.className = "card";
+  card.tabIndex = 0;
+  card.dataset.itemId = item.id;
+  card.dataset.itemType = item.type;
   const bg = item.poster || item.backdropMd || item.backdrop;
   if (bg) card.style.backgroundImage = `url("${bg}")`;
   const key = progressKey(item);
   const p = progressMap[key];
-  const progressBar = (opts.showProgress && p?.progress)
-    ? `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>` : "";
+  let progressBar = "", cwMeta = "";
+  if (opts.showProgress && p?.progress) {
+    progressBar = `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>`;
+    let epLabel = "";
+    if (item.type === "tv" && p.season && p.episode) epLabel = `S${p.season}:E${p.episode}`;
+    else if (item.type === "anime" && p.episode) epLabel = `Ep ${p.episode}`;
+    let leftLabel = "";
+    if (p.duration && p.timestamp) {
+      const min = Math.max(1, Math.ceil((p.duration - p.timestamp) / 60));
+      leftLabel = `${min}m left`;
+    }
+    if (epLabel || leftLabel)
+      cwMeta = `<div class="cw-meta"><span class="ep">${epLabel}</span><span class="left">${leftLabel}</span></div>`;
+  }
   card.innerHTML = `
+    ${cwMeta}
     ${progressBar}
     <div class="card-info">
       <div class="row1">
@@ -150,7 +166,7 @@ function makeCard(item, opts = {}) {
       <div class="title">${escapeHTML(item.title || "")}</div>
     </div>`;
   card.addEventListener("click", () => openModal(item));
-  card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openModal(item); });
+  card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openTitle(item); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
 
   let hoverTimer;
@@ -375,9 +391,14 @@ async function showHome() {
   }
 }
 
-async function showCategory(type) {
+let currentCategoryType = null;
+let currentGenreId = null;
+
+async function showCategory(type, genreId = null) {
   setActive(type);
   stopHeroTrailer();
+  currentCategoryType = type;
+  currentGenreId = genreId;
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 3; i++) rows.appendChild(skeletonRow());
   try {
@@ -386,6 +407,28 @@ async function showCategory(type) {
       renderHero(items.find(i => i.backdrop) || items[0]);
       rows.innerHTML = "";
       rows.appendChild(renderRow("Trending Anime", items));
+      return;
+    }
+    // Genre filter mode: show grid of that genre only
+    if (genreId) {
+      const data = await tmdb(`/discover/${type}`, { with_genres: genreId, sort_by: "popularity.desc" });
+      const items = data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type));
+      renderHero(items.find(i => i.backdrop) || items[0]);
+      rows.innerHTML = "";
+      rows.appendChild(renderGenreChips(type, genreId));
+      const grid = document.createElement("div");
+      grid.className = "search-grid";
+      items.forEach(it => {
+        const cell = document.createElement("div"); cell.className = "search-cell";
+        cell.appendChild(makeCard(it));
+        const meta = document.createElement("div"); meta.className = "search-meta";
+        meta.innerHTML = `<span class="type-pill">${type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span>`;
+        const title = document.createElement("div"); title.className = "search-title";
+        title.textContent = it.title;
+        cell.appendChild(title); cell.appendChild(meta);
+        grid.appendChild(cell);
+      });
+      rows.appendChild(grid);
       return;
     }
     const [popular, topRated, nowOrAir, trending] = await Promise.all([
@@ -397,6 +440,7 @@ async function showCategory(type) {
     const trendItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type));
     renderHero(trendItems.find(i => i.backdrop) || trendItems[0]);
     rows.innerHTML = "";
+    rows.appendChild(renderGenreChips(type, null));
     rows.appendChild(renderRow("Trending This Week", trendItems));
     rows.appendChild(renderRow("Top 10 in " + (type === "tv" ? "TV" : "Movies"), trendItems.slice(0, 10), { top10: true }));
     rows.appendChild(renderRow(type === "movie" ? "Now Playing" : "Currently Airing", nowOrAir.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type))));
@@ -521,6 +565,39 @@ async function searchAll(query) {
     });
     rows.appendChild(grid);
   } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
+}
+
+// TMDB genre lists (movie + tv)
+const GENRES_TV = [
+  { id: 10759, name: "Action & Adventure" },
+  { id: 16,    name: "Animation" },
+  { id: 35,    name: "Comedy" },
+  { id: 80,    name: "Crime" },
+  { id: 99,    name: "Documentary" },
+  { id: 18,    name: "Drama" },
+  { id: 10765, name: "Sci-Fi & Fantasy" },
+  { id: 9648,  name: "Mystery" },
+];
+
+function renderGenreChips(type, activeId) {
+  const wrap = document.createElement("div");
+  wrap.className = "chips";
+  const list = type === "tv" ? GENRES_TV : GENRES_MOVIE;
+  const all = document.createElement("button");
+  all.className = "chip" + (!activeId ? " active" : "");
+  all.textContent = "All";
+  all.addEventListener("click", () => { location.hash = `#/${type === "movie" ? "movies" : "tv"}`; });
+  wrap.appendChild(all);
+  list.forEach(g => {
+    const b = document.createElement("button");
+    b.className = "chip" + (activeId == g.id ? " active" : "");
+    b.textContent = g.name;
+    b.addEventListener("click", () => {
+      location.hash = `#/${type === "movie" ? "movies" : "tv"}/genre/${g.id}`;
+    });
+    wrap.appendChild(b);
+  });
+  return wrap;
 }
 
 function setActive(nav) {
@@ -728,9 +805,14 @@ function closeModal() {
   const heroIframe = $("#hero-trailer iframe");
   if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
 }
-$(".modal-close").addEventListener("click", closeModal);
-$(".modal-backdrop").addEventListener("click", closeModal);
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+function closeModalNav() {
+  // If we're on a title route, navigate away (back) so URL stays in sync
+  if (location.hash.startsWith("#/title/")) history.back();
+  else closeModal();
+}
+$(".modal-close").addEventListener("click", closeModalNav);
+$(".modal-backdrop").addEventListener("click", closeModalNav);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeModalNav(); });
 
 $("#hero-play-btn").addEventListener("click", () => {
   if (!currentItem) return;
@@ -804,19 +886,115 @@ function getContinueWatching() {
     }));
 }
 
+// ---------- URL routing ----------
+function navTo(hash) {
+  if (location.hash === hash) route();
+  else location.hash = hash;
+}
+async function route() {
+  const hash = location.hash || "#/";
+  const m = hash.match(/^#\/?(.*)$/);
+  const path = (m?.[1] || "").split("?")[0];
+  const queryStr = hash.split("?")[1] || "";
+  const params = new URLSearchParams(queryStr);
+  const parts = path.split("/").filter(Boolean);
+
+  // Modal route: #/title/{type}/{id} (?back=<encoded-prev-hash>)
+  if (parts[0] === "title" && parts[1] && parts[2]) {
+    if ($("#modal").classList.contains("hidden")) await openTitleByRoute(parts[1], parts[2]);
+    return;
+  }
+  // Otherwise close any open modal silently
+  if (!$("#modal").classList.contains("hidden")) closeModalSilent();
+
+  $("#search").value = "";
+  document.body.classList.remove("no-hero");
+
+  if (!parts.length) return showHome();
+  if (parts[0] === "movies") {
+    if (parts[1] === "genre" && parts[2]) return showCategory("movie", +parts[2]);
+    return showCategory("movie");
+  }
+  if (parts[0] === "tv") {
+    if (parts[1] === "genre" && parts[2]) return showCategory("tv", +parts[2]);
+    return showCategory("tv");
+  }
+  if (parts[0] === "anime") return showCategory("anime");
+  if (parts[0] === "new") return showNewPopular();
+  if (parts[0] === "list") return showMyList();
+  if (parts[0] === "search") {
+    const q = params.get("q") || "";
+    $("#search").value = q;
+    if (q) return searchAll(q);
+    return showHome();
+  }
+  showHome();
+}
+
+async function openTitleByRoute(type, id) {
+  try {
+    if (type === "anime") {
+      const r = await fetch("https://graphql.anilist.co", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: `query($id:Int){Media(id:$id,type:ANIME){id title{romaji english} coverImage{large extraLarge} bannerImage description(asHtml:false) format episodes averageScore startDate{year} genres trailer{id site}}}`, variables: { id: +id } }),
+      });
+      const d = (await r.json()).data.Media;
+      const item = {
+        id: d.id, type: "anime",
+        title: d.title.english || d.title.romaji,
+        poster: d.coverImage.extraLarge || d.coverImage.large,
+        backdrop: d.bannerImage || d.coverImage.extraLarge,
+        overview: (d.description || "").replace(/<[^>]+>/g, ""),
+        year: d.startDate?.year,
+        rating: d.averageScore ? (d.averageScore / 10).toFixed(1) : null,
+        episodes: d.episodes,
+        isMovie: d.format === "MOVIE",
+        genres: d.genres,
+        trailerKey: d.trailer?.site === "youtube" ? d.trailer.id : null,
+      };
+      return openModal(item);
+    }
+    const data = await tmdb(`/${type}/${id}`);
+    const item = normalizeTMDB({
+      id: data.id, media_type: type,
+      title: data.title, name: data.name,
+      poster_path: data.poster_path, backdrop_path: data.backdrop_path,
+      overview: data.overview,
+      release_date: data.release_date, first_air_date: data.first_air_date,
+      vote_average: data.vote_average, vote_count: data.vote_count,
+    }, type);
+    openModal(item);
+  } catch (e) { console.warn("Failed to load title", e); showHome(); }
+}
+
+function openTitle(item) {
+  navTo(`#/title/${item.type}/${item.id}`);
+}
+
+function closeModalSilent() {
+  $("#modal").classList.add("hidden");
+  $("#modal-trailer").innerHTML = "";
+  $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
+  $(".modal-body").classList.remove("playing");
+  document.body.style.overflow = "";
+  currentItem = null;
+  const heroIframe = $("#hero-trailer iframe");
+  if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
+}
+
+window.addEventListener("hashchange", route);
+
 // ---------- Nav ----------
 $$("#navbar [data-nav]").forEach(a => {
   a.addEventListener("click", e => {
     e.preventDefault();
     const nav = a.dataset.nav;
-    $("#search").value = "";
-    document.body.classList.remove("no-hero");
-    if (nav === "home") showHome();
-    else if (nav === "movies") showCategory("movie");
-    else if (nav === "tv") showCategory("tv");
-    else if (nav === "anime") showCategory("anime");
-    else if (nav === "new") showNewPopular();
-    else if (nav === "mylist") showMyList();
+    if (nav === "home") navTo("#/");
+    else if (nav === "movies") navTo("#/movies");
+    else if (nav === "tv") navTo("#/tv");
+    else if (nav === "anime") navTo("#/anime");
+    else if (nav === "new") navTo("#/new");
+    else if (nav === "mylist") navTo("#/list");
   });
 });
 
@@ -824,8 +1002,33 @@ let searchTimer;
 $("#search").addEventListener("input", e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (!q) { document.body.classList.remove("no-hero"); showHome(); return; }
-  searchTimer = setTimeout(() => searchAll(q), 350);
+  if (!q) { if (location.hash.startsWith("#/search")) navTo("#/"); return; }
+  searchTimer = setTimeout(() => navTo(`#/search?q=${encodeURIComponent(q)}`), 350);
+});
+
+// ---------- Keyboard navigation ----------
+document.addEventListener("keydown", (e) => {
+  // ESC handled in modal; here we focus + arrow navigate cards
+  const f = document.activeElement;
+  if (!f || !f.classList?.contains("card")) return;
+  if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) e.preventDefault();
+  if (e.key === "ArrowLeft") f.previousElementSibling?.focus?.();
+  else if (e.key === "ArrowRight") f.nextElementSibling?.focus?.();
+  else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    // Find the same horizontal index in next/prev row
+    const row = f.closest(".row, .search-grid");
+    const cards = $$(".card");
+    const idx = cards.indexOf(f);
+    if (idx < 0) return;
+    const dir = e.key === "ArrowDown" ? 1 : -1;
+    // Step until we leave current row container
+    for (let i = idx + dir; i >= 0 && i < cards.length; i += dir) {
+      if (cards[i].closest(".row, .search-grid") !== row) {
+        cards[i].focus(); cards[i].scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
+      }
+    }
+  }
 });
 
 window.addEventListener("scroll", () => {
@@ -852,7 +1055,7 @@ function selectProfile(p) {
   $("#profile-avatar-mini").style.background = p.color;
   $("#profile-avatar-mini").textContent = p.initial;
   $("#profile-avatar-mini").style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;`;
-  showHome();
+  route();
 }
 $("#profile-pill").addEventListener("click", e => {
   if (e.target.closest(".profile-menu")) return;
@@ -866,13 +1069,15 @@ $("#switch-profile").addEventListener("click", e => {
   $("#profile-pill").classList.remove("open");
   $("#app").classList.add("hidden");
   $("#profile-screen").classList.remove("hidden");
+  activeProfile = null;
+  localStorage.removeItem(STORAGE.profile);
 });
 $("#clear-data").addEventListener("click", e => {
   e.preventDefault();
   if (confirm("Clear continue-watching and My List for this profile?")) {
     progressMap = {}; myList = [];
     saveJSON(STORAGE.progress, progressMap); saveJSON(STORAGE.list, myList);
-    showHome();
+    route();
   }
   $("#profile-pill").classList.remove("open");
 });
@@ -880,3 +1085,8 @@ $("#clear-data").addEventListener("click", e => {
 // ---------- Boot ----------
 renderProfileScreen();
 if (activeProfile) selectProfile(activeProfile);
+
+// PWA: register service worker (best effort)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}

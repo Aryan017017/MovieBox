@@ -280,10 +280,13 @@ button { font-family: inherit; }
   outline: 2px solid transparent;
   overflow: hidden;
 }
-.card:hover {
+.card:hover, .card:focus-visible {
   outline-color: rgba(255,255,255,0.9);
   box-shadow: var(--shadow-md);
 }
+.card:focus-visible .card-info { opacity: 1; pointer-events: auto; }
+.card:focus { outline: none; }
+.card:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .card .card-info {
   position: absolute; inset: auto 0 0 0; z-index: 2;
   background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%);
@@ -560,6 +563,34 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .search-header strong { color: #fff; font-weight: 700; }
 @media (max-width: 1200px) { .search-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 800px)  { .search-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ================ Genre chips ================ */
+.chips {
+  display: flex; gap: 8px; padding: 0 4%; margin-bottom: 16px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0; padding: 7px 16px; border-radius: 999px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+  color: #d4d4d4; cursor: pointer; font-size: 13px; font-weight: 500;
+  font-family: inherit; transition: all 0.2s var(--ease-soft);
+  white-space: nowrap;
+}
+.chip:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); color: #fff; }
+.chip.active { background: #fff; color: #000; border-color: #fff; }
+
+/* Continue Watching extras */
+.cw-meta {
+  position: absolute; left: 0; right: 0; bottom: 6px; z-index: 1;
+  padding: 0 10px; font-size: 11px; color: #fff;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+  display: flex; justify-content: space-between;
+  pointer-events: none;
+}
+.cw-meta .ep { font-weight: 600; }
+.cw-meta .left { color: #d4d4d4; }
+.card .progress-bar { bottom: 0; left: 0; right: 0; border-radius: 0; }
 
 /* ================ Page header / Empty state ================ */
 .page-header {
