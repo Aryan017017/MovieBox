@@ -245,7 +245,7 @@ async function renderHero(item) {
   const age = pseudoAge(item);
   $("#hero-age").textContent = age;
   $("#hero-content").innerHTML = `
-    <h1>${escapeHTML(item.title)}</h1>
+    <div class="hero-title-slot"><h1>${escapeHTML(item.title)}</h1></div>
     <div class="badges">
       <span class="match">${match}% Match</span>
       <span>${item.year || ""}</span>
@@ -258,6 +258,13 @@ async function renderHero(item) {
   $("#hero-play").addEventListener("click", () => openModal(item));
   $("#hero-info").addEventListener("click", () => openModal(item));
 
+  // Replace H1 with title logo art if available
+  fetchTitleLogo(item).then(logo => {
+    if (logo && heroItem === item) {
+      $("#hero-content .hero-title-slot").innerHTML = `<img class="title-logo" src="${logo}" alt="${escapeHTML(item.title)}" />`;
+    }
+  });
+
   // Try to fetch trailer
   try {
     const key = await fetchTrailerKey(item);
@@ -266,6 +273,30 @@ async function renderHero(item) {
       trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
     }
   } catch {}
+}
+
+async function fetchTitleLogo(item) {
+  if (item.type === "anime") return null;
+  try {
+    const path = item.type === "tv" ? `/tv/${item.id}/images` : `/movie/${item.id}/images`;
+    // override include_image_language so we actually get logos
+    const url = new URL(TMDB + path);
+    url.searchParams.set("api_key", TMDB_API_KEY);
+    url.searchParams.set("include_image_language", "en,null");
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const logos = (data.logos || []).filter(l => l.iso_639_1 === "en" || l.iso_639_1 === null);
+    if (!logos.length) return null;
+    // Prefer PNG, then highest voted
+    logos.sort((a, b) => {
+      const af = a.file_path.endsWith(".png") ? 1 : 0;
+      const bf = b.file_path.endsWith(".png") ? 1 : 0;
+      if (af !== bf) return bf - af;
+      return (b.vote_average || 0) - (a.vote_average || 0);
+    });
+    return `${IMG}/w500${logos[0].file_path}`;
+  } catch { return null; }
 }
 
 async function fetchTrailerKey(item) {
@@ -488,6 +519,13 @@ async function openModal(item, opts = {}) {
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
   $(".modal-body").classList.remove("playing");
   $("#modal-title").textContent = item.title;
+  $("#modal-title").classList.remove("has-logo"); $("#modal-title").style.backgroundImage = "";
+  fetchTitleLogo(item).then(logo => {
+    if (logo && currentItem === item) {
+      $("#modal-title").classList.add("has-logo");
+      $("#modal-title").style.backgroundImage = `url("${logo}")`;
+    }
+  });
   $("#modal-match").textContent = `${pseudoMatch(item)}% Match`;
   $("#modal-year").textContent = item.year || "";
   $("#modal-age").textContent = pseudoAge(item);

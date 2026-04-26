@@ -163,6 +163,13 @@ button { font-family: inherit; }
   letter-spacing: -0.03em; line-height: 1.05;
   text-shadow: 2px 4px 12px rgba(0,0,0,0.6);
 }
+.hero-content .title-logo {
+  max-width: 100%; max-height: 200px;
+  margin-bottom: 18px; display: block;
+  filter: drop-shadow(2px 4px 12px rgba(0,0,0,0.6));
+  animation: fadeIn 0.5s var(--ease);
+}
+.hero-content .hero-title-slot { min-height: 80px; }
 .hero-content .badges {
   display: flex; align-items: center; gap: 14px;
   margin-bottom: 16px; font-size: 15px;
@@ -435,6 +442,14 @@ button { font-family: inherit; }
   font-size: 40px; font-weight: 800; margin-bottom: 22px;
   letter-spacing: -0.02em;
   text-shadow: 2px 4px 12px rgba(0,0,0,0.7);
+}
+.modal-hero-content h2.has-logo {
+  background-repeat: no-repeat; background-position: left bottom;
+  background-size: contain;
+  height: 140px; max-width: 60%;
+  color: transparent; text-shadow: none;
+  margin-bottom: 18px;
+  filter: drop-shadow(2px 4px 10px rgba(0,0,0,0.6));
 }
 .modal-hero-buttons { display: flex; gap: 10px; align-items: center; }
 .mute-circle { margin-left: auto; }
