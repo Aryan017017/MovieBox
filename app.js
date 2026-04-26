@@ -130,7 +130,7 @@ function escapeHTML(s) {
 function makeCard(item, opts = {}) {
   const card = document.createElement("div");
   card.className = "card";
-  const bg = item.backdropMd || item.backdrop || item.poster;
+  const bg = item.poster || item.backdropMd || item.backdrop;
   if (bg) card.style.backgroundImage = `url("${bg}")`;
   const key = progressKey(item);
   const p = progressMap[key];

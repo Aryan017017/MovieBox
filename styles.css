@@ -271,16 +271,16 @@ button { font-family: inherit; }
 .row-arrow:hover { background: rgba(10,10,10,0.95); }
 
 .card {
-  flex: 0 0 16%; aspect-ratio: 16/9;
+  flex: 0 0 12%; aspect-ratio: 2/3;
   background: var(--bg-2); border-radius: 4px;
   background-size: cover; background-position: center;
   cursor: pointer; position: relative;
   transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease);
-  min-width: 240px;
+  min-width: 180px;
   will-change: transform;
 }
 .card:hover {
-  transform: scale(1.4); z-index: 10;
+  transform: scale(1.25); z-index: 10;
   box-shadow: var(--shadow-lg);
 }
 .card .card-info {
@@ -379,7 +379,7 @@ button { font-family: inherit; }
 }
 .skeleton-row .sk-cards { display: flex; gap: 6px; }
 .skeleton-row .sk-card {
-  flex: 0 0 16%; aspect-ratio: 16/9; min-width: 240px;
+  flex: 0 0 12%; aspect-ratio: 2/3; min-width: 180px;
   background: linear-gradient(90deg, #1a1a1a, #242424, #1a1a1a);
   background-size: 200% 100%;
   border-radius: 4px;
@@ -530,9 +530,9 @@ body.no-hero #hero { display: none; }
 body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .search-grid {
   display: grid; grid-template-columns: repeat(6, 1fr);
-  gap: 10px 10px; padding: 0 4%;
+  gap: 14px 10px; padding: 0 4%;
 }
-.search-grid .card { flex: none; min-width: 0; width: 100%; aspect-ratio: 16/9; }
+.search-grid .card { flex: none; min-width: 0; width: 100%; aspect-ratio: 2/3; }
 .search-cell { display: flex; flex-direction: column; gap: 6px; align-self: start; animation: fadeIn 0.4s var(--ease) backwards; }
 .search-cell:nth-child(n) { animation-delay: calc(0.02s * var(--i, 0)); }
 .search-cell .search-title {
