@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=19" />
+<link rel="stylesheet" href="styles.css?v=20" />
 </head>
 <body>
 
@@ -44,9 +44,12 @@
     </nav>
   </div>
   <div class="nav-right">
-    <div class="search-box">
-      <span class="search-icon">⌕</span>
-      <input id="search" type="search" placeholder="Titles, people, genres" />
+    <div class="search-box-wrap">
+      <div class="search-box">
+        <span class="search-icon">⌕</span>
+        <input id="search" type="search" placeholder="Titles, people, genres" autocomplete="off" />
+      </div>
+      <div id="search-suggest" class="search-suggest hidden"></div>
     </div>
     <div class="profile-pill" id="profile-pill">
       <div class="profile-avatar-mini" id="profile-avatar-mini"></div>
@@ -140,6 +143,11 @@
         </div>
       </div>
 
+      <div id="cast-section" class="cast-section hidden">
+        <h3>Cast</h3>
+        <div id="cast-row" class="cast-row"></div>
+      </div>
+
       <div id="episode-section" class="episode-section hidden">
         <div class="section-header">
           <h3>Episodes</h3>
@@ -156,6 +164,6 @@
   </div>
 </div>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

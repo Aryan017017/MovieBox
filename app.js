@@ -61,23 +61,8 @@ async function tmdb(path, params = {}) {
 }
 
 // ---------- AniList ----------
-async function anilistTrending() {
-  const query = `
-    query {
-      Page(perPage: 20) {
-        media(type: ANIME, sort: TRENDING_DESC, format_in: [TV, MOVIE]) {
-          id title { romaji english } coverImage { large extraLarge }
-          bannerImage description(asHtml: false) format episodes averageScore startDate { year }
-          genres trailer { id site }
-        }
-      }
-    }`;
-  const r = await fetch("https://graphql.anilist.co", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
-  const data = await r.json();
-  return data.data.Page.media.map(m => ({
+function normalizeAnilist(m) {
+  return {
     id: m.id, type: "anime",
     title: m.title.english || m.title.romaji,
     poster: m.coverImage.extraLarge || m.coverImage.large,
@@ -89,7 +74,37 @@ async function anilistTrending() {
     isMovie: m.format === "MOVIE",
     genres: m.genres,
     trailerKey: m.trailer?.site === "youtube" ? m.trailer.id : null,
-  }));
+  };
+}
+const ANILIST_FRAG = `
+  id title { romaji english } coverImage { large extraLarge }
+  bannerImage description(asHtml: false) format episodes averageScore
+  startDate { year } genres trailer { id site }`;
+async function anilistQuery(query, variables = {}) {
+  const r = await fetch("https://graphql.anilist.co", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  return (await r.json()).data;
+}
+async function anilistTrending() {
+  const d = await anilistQuery(`query { Page(perPage:20){ media(type:ANIME, sort:TRENDING_DESC, format_in:[TV,MOVIE]){${ANILIST_FRAG}} } }`);
+  return d.Page.media.map(normalizeAnilist);
+}
+async function anilistTopRated() {
+  const d = await anilistQuery(`query { Page(perPage:20){ media(type:ANIME, sort:SCORE_DESC, format_in:[TV,MOVIE]){${ANILIST_FRAG}} } }`);
+  return d.Page.media.map(normalizeAnilist);
+}
+async function anilistSeasonal() {
+  const month = new Date().getMonth() + 1;
+  const season = month <= 3 ? "WINTER" : month <= 6 ? "SPRING" : month <= 9 ? "SUMMER" : "FALL";
+  const year = new Date().getFullYear();
+  const d = await anilistQuery(`query($s:MediaSeason,$y:Int){ Page(perPage:20){ media(type:ANIME, season:$s, seasonYear:$y, sort:POPULARITY_DESC){${ANILIST_FRAG}} } }`, { s: season, y: year });
+  return { items: d.Page.media.map(normalizeAnilist), label: `${season[0] + season.slice(1).toLowerCase()} ${year}` };
+}
+async function anilistByGenre(genre) {
+  const d = await anilistQuery(`query($g:String){ Page(perPage:20){ media(type:ANIME, genre:$g, sort:POPULARITY_DESC){${ANILIST_FRAG}} } }`, { g: genre });
+  return d.Page.media.map(normalizeAnilist);
 }
 
 // ---------- Normalizers ----------
@@ -126,6 +141,26 @@ function escapeHTML(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
 
+// ---------- Lazy image loader ----------
+const lazyImageObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && e.target.dataset.bg) {
+      e.target.style.backgroundImage = `url("${e.target.dataset.bg}")`;
+      e.target.removeAttribute("data-bg");
+      lazyImageObserver.unobserve(e.target);
+    }
+  });
+}, { rootMargin: "200px 100px" });
+
+function preloadImage(url) {
+  if (!url) return;
+  const existing = document.querySelector(`link[rel="preload"][href="${url}"]`);
+  if (existing) return;
+  const link = document.createElement("link");
+  link.rel = "preload"; link.as = "image"; link.href = url;
+  document.head.appendChild(link);
+}
+
 // ---------- Cards & Rows ----------
 function makeCard(item, opts = {}) {
   const card = document.createElement("div");
@@ -134,7 +169,7 @@ function makeCard(item, opts = {}) {
   card.dataset.itemId = item.id;
   card.dataset.itemType = item.type;
   const bg = item.poster || item.backdropMd || item.backdrop;
-  if (bg) card.style.backgroundImage = `url("${bg}")`;
+  if (bg) { card.dataset.bg = bg; lazyImageObserver.observe(card); }
   const key = progressKey(item);
   const p = progressMap[key];
   let progressBar = "", cwMeta = "";
@@ -160,6 +195,7 @@ function makeCard(item, opts = {}) {
         <div class="add-mini">+</div>
       </div>
       <div class="row2">
+        ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
         <span class="age-mini">${pseudoAge(item)}</span>
         <span>${item.year || ""}</span>
       </div>
@@ -253,6 +289,7 @@ async function renderHero(item) {
   heroItem = item;
   const bg = $("#hero-bg");
   const trailerEl = $("#hero-trailer");
+  if (item.backdrop) preloadImage(item.backdrop);
   bg.style.backgroundImage = item.backdrop ? `url("${item.backdrop}")` : "";
   trailerEl.innerHTML = "";
 
@@ -262,6 +299,7 @@ async function renderHero(item) {
   $("#hero-content").innerHTML = `
     <div class="hero-title-slot"><h1>${escapeHTML(item.title)}</h1></div>
     <div class="badges">
+      ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
       <span>${item.year || ""}</span>
     </div>
     <p>${escapeHTML(item.overview || "")}</p>
@@ -403,10 +441,23 @@ async function showCategory(type, genreId = null) {
   rows.innerHTML = ""; for (let i = 0; i < 3; i++) rows.appendChild(skeletonRow());
   try {
     if (type === "anime") {
-      const items = await anilistTrending();
-      renderHero(items.find(i => i.backdrop) || items[0]);
+      const [trending, topRated, seasonal] = await Promise.all([
+        anilistTrending(),
+        anilistTopRated().catch(() => []),
+        anilistSeasonal().catch(() => ({ items: [], label: "" })),
+      ]);
+      renderHero(trending.find(i => i.backdrop) || trending[0]);
       rows.innerHTML = "";
-      rows.appendChild(renderRow("Trending Anime", items));
+      rows.appendChild(renderRow("Trending Now", trending));
+      if (seasonal.items.length) rows.appendChild(renderRow(`This Season · ${seasonal.label}`, seasonal.items));
+      rows.appendChild(renderRow(`Top 10 Anime`, topRated.slice(0, 10), { top10: true }));
+      rows.appendChild(renderRow("Highest Rated", topRated));
+      // Genre rows (lazy)
+      for (const g of ["Action", "Romance", "Comedy", "Sci-Fi", "Fantasy"]) {
+        anilistByGenre(g).then(items => {
+          if (items.length) rows.appendChild(renderRow(g, items));
+        }).catch(() => {});
+      }
       return;
     }
     // Genre filter mode: show grid of that genre only
@@ -555,7 +606,7 @@ async function searchAll(query) {
       cell.appendChild(makeCard(it));
       const meta = document.createElement("div");
       meta.className = "search-meta";
-      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span>`;
+      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
       const title = document.createElement("div");
       title.className = "search-title";
       title.textContent = it.title;
@@ -642,6 +693,7 @@ async function openModal(item, opts = {}) {
   $("#modal-genres").textContent = (item.genres || []).join(", ");
   $("#episode-section").classList.add("hidden");
   $("#similar-section").classList.add("hidden");
+  $("#cast-section").classList.add("hidden"); $("#cast-row").innerHTML = "";
   $("#similar-grid").innerHTML = "";
   updateListButton();
 
@@ -668,6 +720,30 @@ async function openModal(item, opts = {}) {
       else if (details.number_of_seasons) $("#modal-runtime").textContent = `${details.number_of_seasons} Season${details.number_of_seasons > 1 ? "s" : ""}`;
       $("#modal-cast").textContent = credits.cast.slice(0, 4).map(c => c.name).join(", ") || "—";
       $("#modal-genres").textContent = (details.genres || []).map(g => g.name).join(", ");
+
+      // Cast row with images
+      const castRow = $("#cast-row");
+      castRow.innerHTML = "";
+      const cast = (credits.cast || []).slice(0, 12);
+      if (cast.length) {
+        $("#cast-section").classList.remove("hidden");
+        cast.forEach(c => {
+          const card = document.createElement("div");
+          card.className = "cast-card";
+          const img = c.profile_path ? `${IMG}/w185${c.profile_path}` : "";
+          card.innerHTML = `
+            <div class="cast-img" style="background-image:url('${img}')"></div>
+            <div class="cast-name">${escapeHTML(c.name)}</div>
+            ${c.character ? `<div class="cast-char">${escapeHTML(c.character)}</div>` : ""}`;
+          card.addEventListener("click", () => {
+            closeModalNav();
+            setTimeout(() => navTo(`#/search?q=${encodeURIComponent(c.name)}`), 50);
+          });
+          castRow.appendChild(card);
+        });
+      } else {
+        $("#cast-section").classList.add("hidden");
+      }
 
       // Similar
       const simItems = similar.results.slice(0, 9).map(r => normalizeTMDB(r, item.type));
@@ -756,6 +832,7 @@ function makeSimilarCard(item) {
     <div class="sim-img" style="background-image:url('${bg || ""}')"></div>
     <div class="sim-body">
       <div class="sim-meta">
+        ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
         <span>${item.year || ""}</span>
       </div>
       <div class="sim-title">${escapeHTML(item.title)}</div>
@@ -999,11 +1076,90 @@ $$("#navbar [data-nav]").forEach(a => {
 });
 
 let searchTimer;
+let suggestItems = [];
+let suggestFocusIdx = -1;
+
+async function showSuggestions(q) {
+  const box = $("#search-suggest");
+  try {
+    const data = await tmdb("/search/multi", { query: q });
+    suggestItems = data.results
+      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.poster_path)
+      .slice(0, 7)
+      .map(r => normalizeTMDB(r));
+    if (!suggestItems.length) {
+      box.innerHTML = `<div class="suggest-empty">No matches for "${escapeHTML(q)}"</div>`;
+      box.classList.remove("hidden");
+      return;
+    }
+    box.innerHTML = suggestItems.map((it, i) => `
+      <div class="suggest-item" data-idx="${i}">
+        <div class="sug-thumb" style="background-image:url('${it.poster}')"></div>
+        <div class="sug-info">
+          <div class="sug-title">${escapeHTML(it.title)}</div>
+          <div class="sug-meta">
+            <span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>
+            ${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}
+            <span>${it.year || ""}</span>
+          </div>
+        </div>
+      </div>`).join("");
+    suggestFocusIdx = -1;
+    box.classList.remove("hidden");
+    $$(".suggest-item", box).forEach(el => {
+      el.addEventListener("click", () => {
+        const idx = +el.dataset.idx;
+        const item = suggestItems[idx];
+        if (item) { hideSuggestions(); openTitle(item); }
+      });
+    });
+  } catch {
+    box.classList.add("hidden");
+  }
+}
+function hideSuggestions() {
+  $("#search-suggest").classList.add("hidden");
+  suggestFocusIdx = -1;
+}
+
 $("#search").addEventListener("input", e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (!q) { if (location.hash.startsWith("#/search")) navTo("#/"); return; }
-  searchTimer = setTimeout(() => navTo(`#/search?q=${encodeURIComponent(q)}`), 350);
+  if (!q) { hideSuggestions(); if (location.hash.startsWith("#/search")) navTo("#/"); return; }
+  searchTimer = setTimeout(() => showSuggestions(q), 220);
+});
+
+$("#search").addEventListener("keydown", e => {
+  const box = $("#search-suggest");
+  const visible = !box.classList.contains("hidden") && suggestItems.length;
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (visible && suggestFocusIdx >= 0) {
+      hideSuggestions();
+      openTitle(suggestItems[suggestFocusIdx]);
+    } else {
+      const q = $("#search").value.trim();
+      if (q) { hideSuggestions(); navTo(`#/search?q=${encodeURIComponent(q)}`); }
+    }
+  } else if (e.key === "ArrowDown" && visible) {
+    e.preventDefault();
+    suggestFocusIdx = Math.min(suggestItems.length - 1, suggestFocusIdx + 1);
+    $$(".suggest-item", box).forEach((el, i) => el.classList.toggle("focused", i === suggestFocusIdx));
+  } else if (e.key === "ArrowUp" && visible) {
+    e.preventDefault();
+    suggestFocusIdx = Math.max(-1, suggestFocusIdx - 1);
+    $$(".suggest-item", box).forEach((el, i) => el.classList.toggle("focused", i === suggestFocusIdx));
+  } else if (e.key === "Escape") {
+    hideSuggestions();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".search-box-wrap")) hideSuggestions();
+});
+$("#search").addEventListener("focus", () => {
+  const q = $("#search").value.trim();
+  if (q) showSuggestions(q);
 });
 
 // ---------- Keyboard navigation ----------
