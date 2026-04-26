@@ -665,6 +665,50 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .cw-meta .left { color: #d4d4d4; }
 .card .progress-bar { bottom: 0; left: 0; right: 0; border-radius: 0; }
 
+/* ================ Person page ================ */
+.person-header {
+  display: grid; grid-template-columns: 220px 1fr; gap: 32px;
+  padding: 0 4%; margin-bottom: 36px;
+  align-items: start;
+  animation: fadeIn 0.5s var(--ease);
+}
+.person-photo {
+  width: 220px; height: 320px; border-radius: 8px;
+  background-size: cover; background-position: center top;
+  background-color: #222; box-shadow: var(--shadow-md);
+}
+.person-eyebrow {
+  font-size: 12px; color: var(--accent); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+}
+.person-info h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
+.person-meta {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  color: var(--muted); font-size: 14px; margin-bottom: 18px;
+}
+.person-meta span { position: relative; }
+.person-meta span:not(:last-child)::after {
+  content: "·"; margin-left: 16px; color: #555;
+}
+.person-bio {
+  color: #d4d4d4; font-size: 15px; line-height: 1.6;
+  max-width: 800px;
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+}
+.search-character {
+  font-size: 11px; color: var(--muted-2); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+@media (max-width: 900px) {
+  .person-header { grid-template-columns: 1fr; gap: 18px; }
+  .person-photo { width: 160px; height: 240px; margin: 0 auto; }
+  .person-info { text-align: center; }
+  .person-info h1 { font-size: 28px; }
+  .person-meta { justify-content: center; gap: 10px; font-size: 13px; }
+  .person-meta span:not(:last-child)::after { margin-left: 10px; }
+  .person-bio { text-align: left; font-size: 14px; }
+}
+
 /* ================ Page header / Empty state ================ */
 .page-header {
   padding: 0 4%; margin-bottom: 24px;

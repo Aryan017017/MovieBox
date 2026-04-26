@@ -532,6 +532,87 @@ async function showNewPopular() {
   } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
 }
 
+async function showPerson(personId) {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  try {
+    const [person, credits] = await Promise.all([
+      tmdb(`/person/${personId}`),
+      tmdb(`/person/${personId}/combined_credits`),
+    ]);
+    const photo = person.profile_path ? `${IMG}/w300${person.profile_path}` : "";
+    const works = (credits.cast || [])
+      .filter(c => c.poster_path && (c.media_type === "movie" || c.media_type === "tv"))
+      .map(c => ({
+        ...normalizeTMDB({
+          id: c.id, media_type: c.media_type,
+          title: c.title, name: c.name,
+          poster_path: c.poster_path, backdrop_path: c.backdrop_path,
+          overview: c.overview,
+          release_date: c.release_date, first_air_date: c.first_air_date,
+          vote_average: c.vote_average, vote_count: c.vote_count,
+        }, c.media_type),
+        character: c.character,
+      }))
+      .sort((a, b) => (parseFloat(b.rating || 0) * 1 + (b.year || 0) / 10000) - (parseFloat(a.rating || 0) * 1 + (a.year || 0) / 10000));
+
+    rows.innerHTML = "";
+    const header = document.createElement("div");
+    header.className = "person-header";
+    const dob = person.birthday ? new Date(person.birthday).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
+    const age = person.birthday && !person.deathday
+      ? Math.floor((Date.now() - new Date(person.birthday)) / (365.25 * 24 * 3600 * 1000))
+      : null;
+    header.innerHTML = `
+      <div class="person-photo" style="background-image:url('${photo}')"></div>
+      <div class="person-info">
+        <div class="person-eyebrow">${escapeHTML(person.known_for_department || "Cast")}</div>
+        <h1>${escapeHTML(person.name)}</h1>
+        <div class="person-meta">
+          ${dob ? `<span>${dob}${age ? ` (age ${age})` : ""}</span>` : ""}
+          ${person.place_of_birth ? `<span>${escapeHTML(person.place_of_birth)}</span>` : ""}
+          <span>${works.length} title${works.length === 1 ? "" : "s"}</span>
+        </div>
+        ${person.biography ? `<p class="person-bio">${escapeHTML(person.biography)}</p>` : ""}
+      </div>`;
+    rows.appendChild(header);
+
+    if (!works.length) {
+      rows.innerHTML += `<div class="empty">No titles found.</div>`;
+      return;
+    }
+    const sub = document.createElement("div");
+    sub.className = "page-subheader";
+    sub.innerHTML = `<h2>Known For</h2>`;
+    rows.appendChild(sub);
+
+    const grid = document.createElement("div");
+    grid.className = "search-grid";
+    works.forEach(it => {
+      const cell = document.createElement("div"); cell.className = "search-cell";
+      cell.appendChild(makeCard(it));
+      const meta = document.createElement("div"); meta.className = "search-meta";
+      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
+      const title = document.createElement("div"); title.className = "search-title";
+      title.textContent = it.title;
+      cell.appendChild(title); cell.appendChild(meta);
+      if (it.character) {
+        const chr = document.createElement("div");
+        chr.className = "search-character";
+        chr.textContent = `as ${it.character}`;
+        cell.appendChild(chr);
+      }
+      grid.appendChild(cell);
+    });
+    rows.appendChild(grid);
+  } catch (e) {
+    rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
+  }
+}
+
 function showMyList() {
   setActive("mylist");
   document.body.classList.add("no-hero");
@@ -736,8 +817,9 @@ async function openModal(item, opts = {}) {
             <div class="cast-name">${escapeHTML(c.name)}</div>
             ${c.character ? `<div class="cast-char">${escapeHTML(c.character)}</div>` : ""}`;
           card.addEventListener("click", () => {
+            const pid = c.id;
             closeModalNav();
-            setTimeout(() => navTo(`#/search?q=${encodeURIComponent(c.name)}`), 50);
+            setTimeout(() => navTo(`#/person/${pid}`), 50);
           });
           castRow.appendChild(card);
         });
@@ -999,6 +1081,7 @@ async function route() {
   if (parts[0] === "anime") return showCategory("anime");
   if (parts[0] === "new") return showNewPopular();
   if (parts[0] === "list") return showMyList();
+  if (parts[0] === "person" && parts[1]) return showPerson(parts[1]);
   if (parts[0] === "search") {
     const q = params.get("q") || "";
     $("#search").value = q;
