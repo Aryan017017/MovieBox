@@ -545,7 +545,13 @@ async function showPerson(personId) {
     ]);
     const photo = person.profile_path ? `${IMG}/w300${person.profile_path}` : "";
     const works = (credits.cast || [])
-      .filter(c => c.poster_path && (c.media_type === "movie" || c.media_type === "tv"))
+      .filter(c =>
+        c.poster_path && c.backdrop_path &&
+        (c.media_type === "movie" || c.media_type === "tv") &&
+        (c.vote_count || 0) >= 50
+      )
+      // De-dup: same person can appear multiple times in a TV series
+      .filter((c, i, arr) => arr.findIndex(x => x.id === c.id && x.media_type === c.media_type) === i)
       .map(c => ({
         ...normalizeTMDB({
           id: c.id, media_type: c.media_type,
@@ -556,8 +562,10 @@ async function showPerson(personId) {
           vote_average: c.vote_average, vote_count: c.vote_count,
         }, c.media_type),
         character: c.character,
+        popularity: c.popularity || 0,
+        voteCount: c.vote_count || 0,
       }))
-      .sort((a, b) => (parseFloat(b.rating || 0) * 1 + (b.year || 0) / 10000) - (parseFloat(a.rating || 0) * 1 + (a.year || 0) / 10000));
+      .sort((a, b) => b.popularity - a.popularity);
 
     rows.innerHTML = "";
     const header = document.createElement("div");
