@@ -50,6 +50,8 @@ async function tmdb(path, params = {}) {
   if (tmdbCache.has(key)) return tmdbCache.get(key);
   const url = new URL(TMDB + path);
   url.searchParams.set("api_key", TMDB_API_KEY);
+  url.searchParams.set("language", "en-US");
+  url.searchParams.set("include_image_language", "en,null");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const r = await fetch(url);
   if (!r.ok) throw new Error(`TMDB ${r.status}`);
@@ -317,7 +319,7 @@ async function showHome() {
       anilistTrending().catch(() => []),
       tmdb("/trending/all/day"),
     ]);
-    const trendingItems = trending.results.map(r => normalizeTMDB(r));
+    const trendingItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r));
     const heroPick = trendingItems.find(t => t.backdrop && t.overview) || trendingItems[0];
     renderHero(heroPick);
 
@@ -329,15 +331,15 @@ async function showHome() {
 
     rows.appendChild(renderRow("Trending Now", trendingItems));
     rows.appendChild(renderRow(`Top 10 Today`, trendingDay.results.slice(0, 10).map(r => normalizeTMDB(r)), { top10: true }));
-    rows.appendChild(renderRow("Popular Movies", popMovies.results.map(r => normalizeTMDB(r, "movie"))));
-    rows.appendChild(renderRow("Popular TV Shows", popTV.results.map(r => normalizeTMDB(r, "tv"))));
+    rows.appendChild(renderRow("Popular Movies", popMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
+    rows.appendChild(renderRow("Popular TV Shows", popTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
     rows.appendChild(renderRow("Trending Anime", anime));
-    rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.map(r => normalizeTMDB(r, "movie"))));
+    rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
 
     // Genre rows (lazy after main content)
     for (const g of GENRES_MOVIE.slice(0, 5)) {
       const data = await tmdb("/discover/movie", { with_genres: g.id, sort_by: "popularity.desc" });
-      rows.appendChild(renderRow(g.name, data.results.map(r => normalizeTMDB(r, "movie"))));
+      rows.appendChild(renderRow(g.name, data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     }
   } catch (e) {
     rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
@@ -363,19 +365,19 @@ async function showCategory(type) {
       tmdb(type === "movie" ? "/movie/now_playing" : "/tv/on_the_air"),
       tmdb(`/trending/${type}/week`),
     ]);
-    const trendItems = trending.results.map(r => normalizeTMDB(r, type));
+    const trendItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type));
     renderHero(trendItems.find(i => i.backdrop) || trendItems[0]);
     rows.innerHTML = "";
     rows.appendChild(renderRow("Trending This Week", trendItems));
     rows.appendChild(renderRow("Top 10 in " + (type === "tv" ? "TV" : "Movies"), trendItems.slice(0, 10), { top10: true }));
-    rows.appendChild(renderRow(type === "movie" ? "Now Playing" : "Currently Airing", nowOrAir.results.map(r => normalizeTMDB(r, type))));
-    rows.appendChild(renderRow("Popular", popular.results.map(r => normalizeTMDB(r, type))));
-    rows.appendChild(renderRow("Top Rated", topRated.results.map(r => normalizeTMDB(r, type))));
+    rows.appendChild(renderRow(type === "movie" ? "Now Playing" : "Currently Airing", nowOrAir.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type))));
+    rows.appendChild(renderRow("Popular", popular.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type))));
+    rows.appendChild(renderRow("Top Rated", topRated.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, type))));
 
     if (type === "movie") {
       for (const g of GENRES_MOVIE) {
         const data = await tmdb("/discover/movie", { with_genres: g.id, sort_by: "popularity.desc" });
-        rows.appendChild(renderRow(g.name, data.results.map(r => normalizeTMDB(r, "movie"))));
+        rows.appendChild(renderRow(g.name, data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
       }
     }
   } catch (e) {
@@ -395,14 +397,14 @@ async function showNewPopular() {
       tmdb("/trending/all/day"),
       tmdb("/discover/movie", { sort_by: "primary_release_date.desc", "primary_release_date.lte": new Date().toISOString().slice(0,10), "vote_count.gte": 50 }),
     ]);
-    const trendItems = trending.results.map(r => normalizeTMDB(r));
+    const trendItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r));
     renderHero(trendItems.find(i => i.backdrop) || trendItems[0]);
     rows.innerHTML = "";
     rows.appendChild(renderRow("🔥 Trending Today", trendItems));
     rows.appendChild(renderRow("Top 10 Today", trendItems.slice(0, 10), { top10: true }));
-    rows.appendChild(renderRow("Coming Soon (Movies)", upMovies.results.map(r => normalizeTMDB(r, "movie"))));
-    rows.appendChild(renderRow("Airing Today (TV)", upTV.results.map(r => normalizeTMDB(r, "tv"))));
-    rows.appendChild(renderRow("Newly Released", latestMovies.results.map(r => normalizeTMDB(r, "movie"))));
+    rows.appendChild(renderRow("Coming Soon (Movies)", upMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
+    rows.appendChild(renderRow("Airing Today (TV)", upTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
+    rows.appendChild(renderRow("Newly Released", latestMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
   } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
 }
 
@@ -430,7 +432,7 @@ async function searchAll(query) {
   try {
     const data = await tmdb("/search/multi", { query });
     const items = data.results
-      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.backdrop_path)
+      .filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.backdrop_path && r.poster_path)
       .map(r => normalizeTMDB(r));
     rows.innerHTML = "";
     if (!items.length) {
