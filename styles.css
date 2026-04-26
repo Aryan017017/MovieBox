@@ -561,6 +561,34 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 @media (max-width: 1200px) { .search-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 800px)  { .search-grid { grid-template-columns: repeat(2, 1fr); } }
 
+/* ================ Page header / Empty state ================ */
+.page-header {
+  padding: 0 4%; margin-bottom: 24px;
+}
+.page-header h1 {
+  font-size: 36px; font-weight: 700; letter-spacing: -0.02em;
+}
+.page-subheader {
+  padding: 0 4%; margin: 48px 0 4px;
+}
+.page-subheader h2 {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+}
+.empty-state {
+  padding: 80px 4%; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  animation: fadeIn 0.5s var(--ease);
+}
+.empty-state .empty-icon {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px; color: var(--muted); margin-bottom: 8px; font-weight: 300;
+}
+.empty-state h2 { font-size: 26px; font-weight: 700; color: #fff; }
+.empty-state p { color: var(--muted); font-size: 15px; max-width: 420px; line-height: 1.5; }
+.empty-state .btn { margin-top: 16px; }
+
 /* ================ Footer ================ */
 #footer {
   background: var(--bg); color: var(--muted-2);

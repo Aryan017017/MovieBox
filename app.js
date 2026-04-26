@@ -441,17 +441,49 @@ async function showNewPopular() {
 
 function showMyList() {
   setActive("mylist");
-  $("#hero-bg").style.backgroundImage = ""; $("#hero-content").innerHTML = "";
+  document.body.classList.add("no-hero");
   stopHeroTrailer();
   const rows = $("#rows");
-  rows.innerHTML = "";
+  rows.innerHTML = `<div class="page-header"><h1>My List</h1></div>`;
   if (!myList.length) {
-    rows.innerHTML = `<div class="empty" style="padding:120px 4%; text-align:center;">Your list is empty. Tap the + button on any title to save it here.</div>`;
+    rows.innerHTML += `
+      <div class="empty-state">
+        <div class="empty-icon">+</div>
+        <h2>Your list is empty</h2>
+        <p>Tap the + button on any title to save it here for later.</p>
+        <button class="btn" id="empty-browse">Browse Titles</button>
+      </div>`;
+    $("#empty-browse")?.addEventListener("click", () => {
+      document.body.classList.remove("no-hero");
+      showHome();
+    });
     return;
   }
-  rows.appendChild(renderRow("My List", myList));
+  const grid = document.createElement("div");
+  grid.className = "search-grid";
+  myList.forEach(it => {
+    const cell = document.createElement("div");
+    cell.className = "search-cell";
+    cell.appendChild(makeCard(it));
+    const meta = document.createElement("div");
+    meta.className = "search-meta";
+    meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : it.type === "anime" ? "Anime" : "Movie"}</span><span>${it.year || ""}</span>`;
+    const title = document.createElement("div");
+    title.className = "search-title";
+    title.textContent = it.title;
+    cell.appendChild(title);
+    cell.appendChild(meta);
+    grid.appendChild(cell);
+  });
+  rows.appendChild(grid);
   const c = getContinueWatching();
-  if (c.length) rows.appendChild(renderRow("Continue Watching", c, { showProgress: true }));
+  if (c.length) {
+    const continueHeader = document.createElement("div");
+    continueHeader.className = "page-subheader";
+    continueHeader.innerHTML = `<h2>Continue Watching</h2>`;
+    rows.appendChild(continueHeader);
+    rows.appendChild(renderRow("", c, { showProgress: true }));
+  }
 }
 
 async function searchAll(query) {
