@@ -240,9 +240,7 @@ button { font-family: inherit; }
 .row {
   margin: 36px 0; position: relative;
   animation: fadeIn 0.6s var(--ease) backwards;
-  z-index: 1;
 }
-.row:hover { z-index: 5; }
 .row:nth-child(1) { animation-delay: 0.05s; }
 .row:nth-child(2) { animation-delay: 0.1s; }
 .row:nth-child(3) { animation-delay: 0.15s; }
@@ -254,8 +252,8 @@ button { font-family: inherit; }
 }
 .row-wrap { position: relative; }
 .row-scroll {
-  display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden;
-  padding: 50px 4% 130px; margin: -50px 0 -130px;
+  display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;
+  padding: 8px 4%;
   scroll-behavior: smooth; scrollbar-width: none;
 }
 .row-scroll::-webkit-scrollbar { display: none; }
@@ -274,52 +272,56 @@ button { font-family: inherit; }
 
 .card {
   flex: 0 0 12%; aspect-ratio: 2/3;
-  background: var(--bg-2); border-radius: 4px;
+  background: var(--bg-2); border-radius: 6px;
   background-size: cover; background-position: center;
   cursor: pointer; position: relative;
-  transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease);
+  transition: box-shadow 0.3s var(--ease), outline-color 0.2s var(--ease);
   min-width: 180px;
-  will-change: transform;
+  outline: 2px solid transparent;
+  overflow: hidden;
 }
 .card:hover {
-  transform: scale(1.25); z-index: 10;
-  box-shadow: var(--shadow-lg);
+  outline-color: rgba(255,255,255,0.9);
+  box-shadow: var(--shadow-md);
 }
 .card .card-info {
-  position: absolute; inset: auto 0 -90px 0;
-  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-3) 100%);
-  padding: 12px 14px;
-  border-radius: 0 0 4px 4px;
-  opacity: 0; transition: opacity 0.2s 0.15s;
+  position: absolute; inset: auto 0 0 0; z-index: 2;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%);
+  padding: 22px 12px 12px;
+  opacity: 0; transition: opacity 0.25s var(--ease);
   font-size: 12px;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+  pointer-events: none;
 }
-.card:hover .card-info { opacity: 1; }
+.card:hover .card-info { opacity: 1; pointer-events: auto; }
 .card-info .row1 { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .card-info .play-mini, .card-info .add-mini {
-  width: 28px; height: 28px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: all 0.15s;
 }
 .card-info .play-mini {
-  background: #fff; color: #000; font-size: 11px;
+  background: #fff; color: #000; font-size: 12px;
 }
-.card-info .play-mini:hover { background: rgba(255,255,255,0.85); }
+.card-info .play-mini:hover { background: rgba(255,255,255,0.85); transform: scale(1.08); }
 .card-info .add-mini {
-  background: rgba(42,42,42,0.6); color: #fff;
-  border: 2px solid rgba(255,255,255,0.6);
-  font-size: 14px;
+  background: rgba(20,20,20,0.6); color: #fff;
+  border: 2px solid rgba(255,255,255,0.7);
+  font-size: 16px; backdrop-filter: blur(6px);
 }
-.card-info .add-mini:hover { border-color: #fff; }
+.card-info .add-mini:hover { border-color: #fff; transform: scale(1.08); }
 .card-info .row2 { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; }
 .card-info .match { color: var(--green); font-weight: 700; }
-.card-info .age-mini { border: 1px solid #555; padding: 0 5px; font-size: 10px; color: #ddd; }
-.card-info .title { color: #fff; font-weight: 600; margin-top: 6px; font-size: 13px; }
+.card-info .age-mini { border: 1px solid #777; padding: 0 5px; font-size: 10px; color: #e5e5e5; }
+.card-info .title {
+  color: #fff; font-weight: 600; margin-top: 6px; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .card-trailer {
-  position: absolute; inset: 0; overflow: hidden; border-radius: 4px;
+  position: absolute; inset: 0; overflow: hidden; border-radius: 6px;
   pointer-events: none; background: #000;
   animation: fadeIn 0.4s var(--ease);
+  z-index: 0;
 }
 .card-trailer iframe {
   position: absolute; top: 50%; left: 50%;
@@ -327,7 +329,7 @@ button { font-family: inherit; }
   transform: translate(-50%, -50%);
 }
 .card-mute {
-  position: absolute; bottom: 8px; right: 8px; z-index: 3;
+  position: absolute; bottom: 8px; right: 8px; z-index: 4;
   width: 30px; height: 30px; border-radius: 50%;
   background: rgba(0,0,0,0.65); color: #fff;
   border: 2px solid rgba(255,255,255,0.6);
