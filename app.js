@@ -6,11 +6,26 @@ const PLAYER_COLOR = "E50914";
 // Optional: deploy the Cloudflare Worker in /worker and put its URL here to
 // route the player through a popup-shielding proxy. Leave "" to disable.
 const PROXY_PLAYER_BASE = "";
+
+// ---- Player provider ----
+// All free embed providers monetize via popup ads. Try a few and pick the
+// least aggressive at the moment. Swap this single value.
+//   "videasy"  – default, supports postMessage progress + many params
+//   "vidlink"  – often cleaner; supports postMessage progress
+//   "vidsrc"   – different URL scheme, fewer params
+//   "embedsu"  – minimal, bare embed
+const PLAYER_PROVIDER = "videasy";
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
-const PLAYER_BASE = PROXY_PLAYER_BASE || "https://player.videasy.net";
+const PLAYER_BASES = {
+  videasy: "https://player.videasy.net",
+  vidlink: "https://vidlink.pro",
+  vidsrc:  "https://vidsrc.cc/v2/embed",
+  embedsu: "https://embed.su/embed",
+};
+const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
 const YT = "https://www.youtube.com/embed/";
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -1173,19 +1188,49 @@ function showUpNext() {
 let lastTimestamp = 0;
 
 function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
+  const last = progressMap[progressKey(item)];
+  const seek = overrideSeek != null ? Math.floor(overrideSeek) : (last?.timestamp ? Math.floor(last.timestamp) : null);
+
+  // Provider-specific URL builders
+  const provider = PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER;
+
+  if (provider === "vidlink") {
+    // vidlink.pro - same path scheme as videasy
+    const params = new URLSearchParams();
+    params.set("primaryColor", PLAYER_COLOR);
+    params.set("autoplay", "true");
+    params.set("nextbutton", "true");
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    else path = item.isMovie ? `/anime/${item.id}` : `/anime/${item.id}/${ctx.episode || 1}`;
+    return `${PLAYER_BASE}${path}?${params.toString()}`;
+  }
+
+  if (provider === "vidsrc") {
+    let path;
+    if (item.type === "movie" || (item.type === "anime" && item.isMovie)) path = `/movie/${item.id}`;
+    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    else path = `/anime/${item.id}/${ctx.episode || 1}`;
+    return `${PLAYER_BASE}${path}`;
+  }
+
+  if (provider === "embedsu") {
+    let path;
+    if (item.type === "movie" || (item.type === "anime" && item.isMovie)) path = `/movie/${item.id}`;
+    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    else path = `/anime/${item.id}/${ctx.episode || 1}`;
+    return `${PLAYER_BASE}${path}`;
+  }
+
+  // Default: videasy
   const params = new URLSearchParams();
   params.set("color", PLAYER_COLOR);
   params.set("nextEpisode", "true");
   params.set("episodeSelector", "true");
   params.set("autoplayNextEpisode", "true");
   params.set("overlay", "true");
-
-  if (overrideSeek != null) {
-    params.set("progress", Math.floor(overrideSeek));
-  } else {
-    const last = progressMap[progressKey(item)];
-    if (last?.timestamp) params.set("progress", Math.floor(last.timestamp));
-  }
+  if (seek != null) params.set("progress", seek);
 
   let path;
   if (item.type === "movie") path = `/movie/${item.id}`;
