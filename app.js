@@ -3,11 +3,14 @@
 // =========================================================================
 const TMDB_API_KEY = "ebc17fdd2c491ffd1d0cbac7000be592";
 const PLAYER_COLOR = "E50914";
+// Optional: deploy the Cloudflare Worker in /worker and put its URL here to
+// route the player through a popup-shielding proxy. Leave "" to disable.
+const PROXY_PLAYER_BASE = "";
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
-const PLAYER_BASE = "https://player.videasy.net";
+const PLAYER_BASE = PROXY_PLAYER_BASE || "https://player.videasy.net";
 const YT = "https://www.youtube.com/embed/";
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -1145,6 +1148,7 @@ function navTo(hash) {
   if (location.hash === hash) route();
   else location.hash = hash;
 }
+let lastNonModalHash = "#/";
 async function route() {
   const hash = location.hash || "#/";
   const m = hash.match(/^#\/?(.*)$/);
@@ -1161,29 +1165,40 @@ async function route() {
   // Otherwise close any open modal silently
   if (!$("#modal").classList.contains("hidden")) closeModalSilent();
 
+  // Smooth cross-fade between non-modal pages (skip on first paint)
+  const c = $("#content");
+  if (lastNonModalHash !== hash) {
+    c.classList.add("transitioning");
+    await new Promise(r => setTimeout(r, 180));
+  }
+  lastNonModalHash = hash;
+  // Run page render synchronously then fade back in next frame
+  const finish = () => requestAnimationFrame(() => c.classList.remove("transitioning"));
+
   $("#search").value = "";
   document.body.classList.remove("no-hero");
 
-  if (!parts.length) return showHome();
-  if (parts[0] === "movies") {
-    if (parts[1] === "genre" && parts[2]) return showCategory("movie", +parts[2]);
-    return showCategory("movie");
+  let p;
+  if (!parts.length) p = showHome();
+  else if (parts[0] === "movies") {
+    if (parts[1] === "genre" && parts[2]) p = showCategory("movie", +parts[2]);
+    else p = showCategory("movie");
   }
-  if (parts[0] === "tv") {
-    if (parts[1] === "genre" && parts[2]) return showCategory("tv", +parts[2]);
-    return showCategory("tv");
+  else if (parts[0] === "tv") {
+    if (parts[1] === "genre" && parts[2]) p = showCategory("tv", +parts[2]);
+    else p = showCategory("tv");
   }
-  if (parts[0] === "anime") return showCategory("anime");
-  if (parts[0] === "new") return showNewPopular();
-  if (parts[0] === "list") return showMyList();
-  if (parts[0] === "person" && parts[1]) return showPerson(parts[1]);
-  if (parts[0] === "search") {
+  else if (parts[0] === "anime") p = showCategory("anime");
+  else if (parts[0] === "new") p = showNewPopular();
+  else if (parts[0] === "list") { showMyList(); p = Promise.resolve(); }
+  else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
+  else if (parts[0] === "search") {
     const q = params.get("q") || "";
     $("#search").value = q;
-    if (q) return searchAll(q);
-    return showHome();
+    p = q ? searchAll(q) : showHome();
   }
-  showHome();
+  else p = showHome();
+  Promise.resolve(p).finally(finish);
 }
 
 async function openTitleByRoute(type, id) {

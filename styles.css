@@ -848,6 +848,10 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .service-code:hover { color: #d4d4d4; border-color: #d4d4d4; }
 .footer-copy { font-size: 12px; color: var(--muted-2); }
 
+/* ================ Page transitions ================ */
+#content { transition: opacity 0.18s var(--ease-soft); }
+#content.transitioning { opacity: 0; }
+
 /* ================ Animations ================ */
 @keyframes fadeIn {
   from { opacity: 0; }
