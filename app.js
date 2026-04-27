@@ -206,9 +206,9 @@ function extractDominantColor(url) {
   });
 }
 function clampForTint({ r, g, b }) {
-  // Mix with a deep base so the tint is rich but never blown out
+  // Darken the tint heavily so it acts as a subtle ambient hint, never dominant
   const max = Math.max(r, g, b);
-  const scale = max > 200 ? 200 / max : 1;
+  const scale = max > 0 ? 130 / max : 1;
   return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
 }
 function applyHeroTint(color) {
