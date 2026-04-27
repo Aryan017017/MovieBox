@@ -21,8 +21,7 @@ const DEFAULT_PROFILES = [
 ];
 const PROFILE_COLORS = ["#e50914","#0080ff","#f5c518","#46d369","#9333ea","#ec4899","#06b6d4","#f97316","#84cc16","#64748b"];
 const STORAGE_PROFILES = "moviebox:profiles";
-let PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
-if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
+let PROFILES = []; // populated after storage helpers below
 function saveProfiles() { saveJSON(STORAGE_PROFILES, PROFILES); }
 function profileInitial(p) { return (p.name || "?").trim().charAt(0).toUpperCase(); }
 
@@ -49,6 +48,8 @@ const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 let progressMap = loadJSON(STORAGE.progress, {});
 let myList = loadJSON(STORAGE.list, []);
 let activeProfile = loadJSON(STORAGE.profile, null);
+PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
+if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
 
 // ---------- TMDB ----------
 const tmdbCache = new Map();
