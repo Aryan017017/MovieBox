@@ -258,11 +258,9 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   transform: scale(1.4);
 }
 .hero-fade-bottom {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 55%;
-  background:
-    linear-gradient(180deg, transparent 0%, rgba(var(--hero-tint-rgb), 0.08) 50%, rgba(var(--hero-tint-rgb), 0.18) 80%, var(--bg) 100%);
+  position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
+  background: linear-gradient(180deg, transparent, var(--bg) 92%);
   pointer-events: none;
-  transition: background 0.6s var(--ease-soft);
 }
 .hero-fade-left {
   position: absolute; inset: 0;
@@ -270,14 +268,7 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   pointer-events: none;
 }
 /* Subtle ambient tint at the top of the rows section, fading out */
-#rows::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 280px;
-  background: linear-gradient(180deg, rgba(var(--hero-tint-rgb), 0.12) 0%, rgba(var(--hero-tint-rgb), 0) 100%);
-  pointer-events: none; z-index: 0;
-  transition: background 0.6s var(--ease-soft);
-}
 #rows { position: relative; }
-#rows > * { position: relative; z-index: 1; }
 .hero-content {
   position: absolute; left: 4%; bottom: 28%; max-width: 38%;
   z-index: 2;
@@ -597,15 +588,11 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
 .modal-hero-fade {
   position: absolute; inset: 0;
   background:
-    linear-gradient(180deg, transparent 35%, rgba(20,20,20,0.45) 70%, var(--bg-2) 100%),
-    linear-gradient(180deg, transparent 60%, rgba(var(--modal-tint-rgb), 0.18) 95%);
+    linear-gradient(180deg, transparent 30%, rgba(20,20,20,0.5) 65%, var(--bg-2) 100%),
+    linear-gradient(0deg, rgba(20,20,20,0.4), transparent 40%);
   pointer-events: none;
-  transition: background 0.6s var(--ease-soft);
 }
-.modal-body {
-  background: linear-gradient(180deg, rgba(var(--modal-tint-rgb), 0.06), var(--bg-2) 200px), var(--bg-2);
-  transition: background 0.6s var(--ease-soft);
-}
+.modal-body { background: var(--bg-2); }
 .modal-info { background: transparent; }
 .modal-hero-content {
   position: absolute; left: 6%; right: 6%; bottom: 32px; z-index: 2;
