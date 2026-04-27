@@ -22,6 +22,7 @@ const DEFAULT_PROFILES = [
 const PROFILE_COLORS = ["#e50914","#0080ff","#f5c518","#46d369","#9333ea","#ec4899","#06b6d4","#f97316","#84cc16","#64748b"];
 const STORAGE_PROFILES = "moviebox:profiles";
 let PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
+if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
 function saveProfiles() { saveJSON(STORAGE_PROFILES, PROFILES); }
 function profileInitial(p) { return (p.name || "?").trim().charAt(0).toUpperCase(); }
 
@@ -1517,7 +1518,18 @@ $("#clear-data").addEventListener("click", e => {
 renderProfileScreen();
 if (activeProfile) selectProfile(activeProfile);
 
-// PWA: register service worker (best effort)
+// PWA: register service worker (best effort) and self-update
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").then(reg => {
+      reg.update?.();
+      reg.addEventListener("updatefound", () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener("statechange", () => {
+          if (sw.state === "activated") location.reload();
+        });
+      });
+    }).catch(() => {});
+  });
 }
