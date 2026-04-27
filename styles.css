@@ -808,6 +808,109 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .cw-meta .left { color: #d4d4d4; }
 .card .progress-bar { bottom: 0; left: 0; right: 0; border-radius: 0; }
 
+/* ================ History page ================ */
+.history-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+  padding: 0 4%;
+}
+.history-row {
+  display: grid; grid-template-columns: 200px 1fr; gap: 18px;
+  background: var(--bg-2); border-radius: 8px; padding: 14px;
+  align-items: stretch; transition: background 0.15s;
+}
+.history-row:hover { background: var(--bg-3); }
+.history-thumb {
+  position: relative; width: 200px; aspect-ratio: 16/9;
+  background-size: cover; background-position: center; background-color: #111;
+  border-radius: 4px; cursor: pointer; overflow: hidden;
+}
+.history-thumb .ep-progress {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.2);
+}
+.history-thumb .ep-progress > div { height: 100%; background: var(--accent); }
+.history-thumb .play-glyph {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.2s; font-size: 36px;
+}
+.history-thumb:hover .play-glyph { opacity: 1; }
+.history-info { display: flex; flex-direction: column; min-width: 0; }
+.history-info h3 {
+  font-size: 17px; font-weight: 700; margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.history-info .h-sub { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.history-info .h-when { font-size: 12px; color: var(--muted-2); margin-bottom: 12px; }
+.history-info .h-actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+.history-info .h-actions button {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  color: #d4d4d4; padding: 6px 12px; border-radius: 4px; cursor: pointer;
+  font-size: 12px; font-family: inherit; font-weight: 500;
+  transition: all 0.15s;
+}
+.history-info .h-actions button:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3); }
+.history-info .h-actions .resume { background: #fff; color: #000; border-color: #fff; }
+.history-info .h-actions .resume:hover { background: rgba(255,255,255,0.85); }
+.history-stats {
+  display: flex; gap: 18px; padding: 0 4%; margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.history-stat {
+  background: var(--bg-2); border-radius: 8px; padding: 14px 22px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.history-stat .stat-num { font-size: 28px; font-weight: 800; line-height: 1; }
+.history-stat .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+@media (max-width: 1024px) { .history-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .history-row { grid-template-columns: 130px 1fr; gap: 12px; padding: 10px; }
+  .history-thumb { width: 130px; }
+  .history-info h3 { font-size: 14px; }
+}
+
+/* Watched badge on cards */
+.card .watched-badge {
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  background: rgba(0,0,0,0.78); color: #fff;
+  padding: 3px 8px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; border-radius: 3px;
+  text-transform: uppercase;
+}
+
+/* Resume prompt */
+.resume-prompt {
+  position: fixed; bottom: 24px; left: 24px; z-index: 80;
+  background: rgba(20,20,20,0.96); backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 16px 18px;
+  display: grid; grid-template-columns: 100px 1fr; gap: 14px;
+  width: 380px; max-width: calc(100vw - 48px);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.5s var(--ease);
+}
+.resume-prompt.hidden { display: none; }
+.resume-prompt .rp-thumb {
+  width: 100px; aspect-ratio: 16/9; border-radius: 4px;
+  background-size: cover; background-position: center;
+}
+.resume-prompt .rp-info { display: flex; flex-direction: column; min-width: 0; }
+.resume-prompt .rp-eyebrow { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
+.resume-prompt .rp-title {
+  font-size: 14px; font-weight: 600; margin: 4px 0 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resume-prompt .rp-sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.resume-prompt .rp-buttons { display: flex; gap: 6px; margin-top: auto; }
+.resume-prompt .rp-buttons button {
+  flex: 1; padding: 6px 10px; font-size: 12px; font-weight: 600;
+  border: 0; cursor: pointer; border-radius: 4px; font-family: inherit;
+}
+.resume-prompt .rp-resume { background: #fff; color: #000; }
+.resume-prompt .rp-dismiss { background: rgba(109,109,110,0.4); color: #fff; }
+.resume-prompt .rp-close {
+  position: absolute; top: 6px; right: 6px;
+  background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1;
+}
+
 /* ================ Person page ================ */
 .person-header {
   display: grid; grid-template-columns: 220px 1fr; gap: 32px;

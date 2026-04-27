@@ -63,11 +63,39 @@ const STORAGE = {
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-let progressMap = loadJSON(STORAGE.progress, {});
-let myList = loadJSON(STORAGE.list, []);
+let progressMap = {};
+let myList = [];
 let activeProfile = loadJSON(STORAGE.profile, null);
 PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
 if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
+
+// Per-profile storage keys
+function profileStorageKey(base) {
+  return activeProfile?.id ? `${base}:${activeProfile.id}` : base;
+}
+function loadProfileData() {
+  progressMap = loadJSON(profileStorageKey(STORAGE.progress), {});
+  myList = loadJSON(profileStorageKey(STORAGE.list), []);
+  // One-time migration: copy legacy global data into the first profile that loads it
+  if (activeProfile?.id && Object.keys(progressMap).length === 0) {
+    const legacyP = loadJSON(STORAGE.progress, null);
+    if (legacyP && Object.keys(legacyP).length) {
+      progressMap = legacyP;
+      saveJSON(profileStorageKey(STORAGE.progress), progressMap);
+      localStorage.removeItem(STORAGE.progress);
+    }
+  }
+  if (activeProfile?.id && myList.length === 0) {
+    const legacyL = loadJSON(STORAGE.list, null);
+    if (legacyL && legacyL.length) {
+      myList = legacyL;
+      saveJSON(profileStorageKey(STORAGE.list), myList);
+      localStorage.removeItem(STORAGE.list);
+    }
+  }
+}
+function saveProgress() { saveJSON(profileStorageKey(STORAGE.progress), progressMap); }
+function saveMyList() { saveJSON(profileStorageKey(STORAGE.list), myList); }
 
 // ---------- TMDB ----------
 const tmdbCache = new Map();
@@ -266,7 +294,8 @@ function makeCard(item, opts = {}) {
   if (bg) { card.dataset.bg = bg; lazyImageObserver.observe(card); }
   const key = progressKey(item);
   const p = progressMap[key];
-  let progressBar = "", cwMeta = "";
+  let progressBar = "", cwMeta = "", watchedBadge = "";
+  if (p && p.progress >= 95) watchedBadge = `<div class="watched-badge">Watched</div>`;
   if (opts.showProgress && p?.progress) {
     progressBar = `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>`;
     let epLabel = "";
@@ -281,6 +310,7 @@ function makeCard(item, opts = {}) {
       cwMeta = `<div class="cw-meta"><span class="ep">${epLabel}</span><span class="left">${leftLabel}</span></div>`;
   }
   card.innerHTML = `
+    ${watchedBadge}
     ${cwMeta}
     ${progressBar}
     <div class="card-info">
@@ -727,6 +757,165 @@ async function showPerson(personId) {
   } catch (e) {
     rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
   }
+}
+
+function showHistory() {
+  setActive("history");
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  const entries = Object.entries(progressMap)
+    .filter(([, v]) => v.title)
+    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+  rows.innerHTML = `<div class="page-header"><h1>Watch History</h1></div>`;
+  if (!entries.length) {
+    rows.innerHTML += `
+      <div class="empty-state">
+        <div class="empty-icon">⏱</div>
+        <h2>No history yet</h2>
+        <p>Anything you watch will be tracked here so you can pick up where you left off.</p>
+      </div>`;
+    return;
+  }
+  // Stats
+  const totalSeconds = entries.reduce((acc, [, v]) => acc + (v.timestamp || 0), 0);
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const inProgress = entries.filter(([, v]) => v.progress > 1 && v.progress < 95).length;
+  const finished = entries.filter(([, v]) => v.progress >= 95).length;
+  const stats = document.createElement("div");
+  stats.className = "history-stats";
+  stats.innerHTML = `
+    <div class="history-stat"><div class="stat-num">${entries.length}</div><div class="stat-label">Titles</div></div>
+    <div class="history-stat"><div class="stat-num">${inProgress}</div><div class="stat-label">In Progress</div></div>
+    <div class="history-stat"><div class="stat-num">${finished}</div><div class="stat-label">Finished</div></div>
+    <div class="history-stat"><div class="stat-num">${totalMinutes < 60 ? totalMinutes + "m" : Math.round(totalMinutes / 60) + "h"}</div><div class="stat-label">Watched</div></div>`;
+  rows.appendChild(stats);
+
+  const grid = document.createElement("div");
+  grid.className = "history-grid";
+  entries.forEach(([key, v]) => {
+    const item = {
+      id: v.itemId, type: v.itemType, title: v.title,
+      poster: v.poster, backdrop: v.backdrop, backdropMd: v.backdropMd,
+      overview: v.overview, year: v.year, rating: v.rating,
+      isMovie: v.isMovie, episodes: v.episodes,
+    };
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const thumbBg = v.backdropMd || v.backdrop || v.poster || "";
+    const pct = Math.min(100, Math.round(v.progress || 0));
+    const finishedLabel = v.progress >= 95 ? "Finished" : (pct + "% watched");
+    let epLabel = "";
+    if (v.itemType === "tv" && v.season && v.episode) epLabel = `S${v.season} · E${v.episode}`;
+    else if (v.itemType === "anime" && v.episode) epLabel = `Episode ${v.episode}`;
+    else if (v.itemType === "movie") epLabel = "Movie";
+    let leftLabel = "";
+    if (v.duration && v.timestamp && v.progress < 95) {
+      const min = Math.max(1, Math.ceil((v.duration - v.timestamp) / 60));
+      leftLabel = ` · ${min}m left`;
+    }
+    const when = v.updatedAt ? humanWhen(v.updatedAt) : "";
+    row.innerHTML = `
+      <div class="history-thumb" style="background-image:url('${thumbBg}')">
+        <div class="play-glyph">▶</div>
+        <div class="ep-progress"><div style="width:${pct}%"></div></div>
+      </div>
+      <div class="history-info">
+        <h3>${escapeHTML(v.title)}</h3>
+        <div class="h-sub">${epLabel}${leftLabel} · ${finishedLabel}</div>
+        <div class="h-when">${when}</div>
+        <div class="h-actions">
+          <button class="resume">${v.progress >= 95 ? "▶ Watch Again" : "▶ Resume"}</button>
+          <button class="info">Details</button>
+          <button class="markwatched">${v.progress >= 95 ? "Unmark" : "Mark Watched"}</button>
+          <button class="remove">Remove</button>
+        </div>
+      </div>`;
+    row.querySelector(".history-thumb").addEventListener("click", () => openTitle(item));
+    row.querySelector(".resume").addEventListener("click", () => openTitle(item));
+    row.querySelector(".info").addEventListener("click", () => openTitle(item));
+    row.querySelector(".markwatched").addEventListener("click", () => {
+      if (progressMap[key].progress >= 95) {
+        progressMap[key].progress = 5; progressMap[key].timestamp = 30;
+      } else {
+        progressMap[key].progress = 100;
+        progressMap[key].timestamp = progressMap[key].duration || 0;
+      }
+      progressMap[key].updatedAt = Date.now();
+      saveProgress();
+      showHistory();
+    });
+    row.querySelector(".remove").addEventListener("click", () => {
+      delete progressMap[key];
+      saveProgress();
+      showToast("Removed from history");
+      showHistory();
+    });
+    grid.appendChild(row);
+  });
+  rows.appendChild(grid);
+}
+
+function humanWhen(ts) {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  const w = Math.floor(d / 7);
+  if (w < 4) return `${w}w ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+// Resume prompt (shown ~2s after profile select if there's something to resume)
+let resumeShown = false;
+function maybeShowResumePrompt() {
+  if (resumeShown) return;
+  const cw = getContinueWatching();
+  if (!cw.length) return;
+  const top = cw[0];
+  const key = `${top.type}:${top.id}`;
+  const v = progressMap[key];
+  if (!v) return;
+  // Only prompt if last watched within 14 days and not finished
+  if (Date.now() - (v.updatedAt || 0) > 14 * 24 * 3600 * 1000) return;
+  if (v.progress >= 95) return;
+  resumeShown = true;
+  // Don't show on top of an already-open modal
+  if (!$("#modal").classList.contains("hidden")) return;
+
+  const prompt = document.createElement("div");
+  prompt.className = "resume-prompt";
+  let ep = "";
+  if (v.itemType === "tv" && v.season && v.episode) ep = `S${v.season} · E${v.episode}`;
+  else if (v.itemType === "anime" && v.episode) ep = `Episode ${v.episode}`;
+  let left = "";
+  if (v.duration && v.timestamp) {
+    const mins = Math.max(1, Math.ceil((v.duration - v.timestamp) / 60));
+    left = `${mins}m left`;
+  }
+  prompt.innerHTML = `
+    <button class="rp-close" aria-label="Dismiss">×</button>
+    <div class="rp-thumb" style="background-image:url('${top.backdropMd || top.backdrop || top.poster || ""}')"></div>
+    <div class="rp-info">
+      <div class="rp-eyebrow">Pick up where you left off</div>
+      <div class="rp-title">${escapeHTML(top.title)}</div>
+      <div class="rp-sub">${[ep, left].filter(Boolean).join(" · ")}</div>
+      <div class="rp-buttons">
+        <button class="rp-resume">▶ Resume</button>
+        <button class="rp-dismiss">Not now</button>
+      </div>
+    </div>`;
+  document.body.appendChild(prompt);
+  const remove = () => { prompt.remove(); };
+  prompt.querySelector(".rp-close").addEventListener("click", remove);
+  prompt.querySelector(".rp-dismiss").addEventListener("click", remove);
+  prompt.querySelector(".rp-resume").addEventListener("click", () => { remove(); openTitle(top); });
+  // Auto-dismiss after 12s
+  setTimeout(() => prompt.parentNode && prompt.remove(), 12000);
 }
 
 function showMyList() {
@@ -1297,7 +1486,7 @@ function toggleList(item) {
     });
     showToast(`Added "${item.title}" to My List`);
   }
-  saveJSON(STORAGE.list, myList);
+  saveMyList();
   updateListButton();
 }
 
@@ -1336,7 +1525,7 @@ window.addEventListener("message", (event) => {
     itemType: currentItem.type, itemId: currentItem.id,
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
   };
-  saveJSON(STORAGE.progress, progressMap);
+  saveProgress();
 
   // ----- Skip Intro & Up Next overlays -----
   if (typeof data.timestamp === "number") lastTimestamp = data.timestamp;
@@ -1521,6 +1710,7 @@ $$("#navbar [data-nav]").forEach(a => {
     else if (nav === "anime") navTo("#/anime");
     else if (nav === "new") navTo("#/new");
     else if (nav === "mylist") navTo("#/list");
+    else if (nav === "history") navTo("#/history");
   });
 });
 
@@ -1743,6 +1933,7 @@ $("#manage-profiles").addEventListener("click", () => {
 });
 function selectProfile(p) {
   activeProfile = p; saveJSON(STORAGE.profile, p);
+  loadProfileData();
   manageMode = false; document.body.classList.remove("profile-manage-mode");
   $("#manage-profiles").textContent = "Manage Profiles";
   $("#profile-screen").classList.add("hidden");
@@ -1752,6 +1943,7 @@ function selectProfile(p) {
   $("#profile-avatar-mini").style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;`;
   route();
   maybeShowOnboarding();
+  setTimeout(maybeShowResumePrompt, 1800);
 }
 
 function maybeShowOnboarding() {
@@ -1780,7 +1972,7 @@ $("#clear-data").addEventListener("click", e => {
   e.preventDefault();
   if (confirm("Clear continue-watching and My List for this profile?")) {
     progressMap = {}; myList = [];
-    saveJSON(STORAGE.progress, progressMap); saveJSON(STORAGE.list, myList);
+    saveProgress(); saveJSON(STORAGE.list, myList);
     route();
   }
   $("#profile-pill").classList.remove("open");
