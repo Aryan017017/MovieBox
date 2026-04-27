@@ -152,6 +152,74 @@ function escapeHTML(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
 
+// ---------- Dominant-color extraction ----------
+const colorCache = new Map();
+function extractDominantColor(url) {
+  if (!url) return Promise.resolve(null);
+  if (colorCache.has(url)) return Promise.resolve(colorCache.get(url));
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const W = 64, H = 64;
+        const canvas = document.createElement("canvas");
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, W, H);
+        const data = ctx.getImageData(0, 0, W, H).data;
+        // Quantize into 4-bit-per-channel buckets, pick the most-vibrant common bucket
+        const buckets = new Map();
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+          if (a < 200) continue;
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const sat = max - min;
+          // Skip near-black, near-white, and grayscale pixels
+          if (max < 50 || min > 220 || sat < 35) continue;
+          const key = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
+          let bucket = buckets.get(key);
+          if (!bucket) { bucket = { r: 0, g: 0, b: 0, n: 0, score: 0 }; buckets.set(key, bucket); }
+          bucket.r += r; bucket.g += g; bucket.b += b; bucket.n++;
+          // Score favors saturation + count
+          bucket.score += sat;
+        }
+        if (!buckets.size) { colorCache.set(url, null); return resolve(null); }
+        let best = null;
+        for (const b of buckets.values()) if (!best || b.score > best.score) best = b;
+        const color = {
+          r: Math.round(best.r / best.n),
+          g: Math.round(best.g / best.n),
+          b: Math.round(best.b / best.n),
+        };
+        // Boost saturation a bit & cap luminance so it always reads as a tint
+        const tweaked = clampForTint(color);
+        colorCache.set(url, tweaked);
+        resolve(tweaked);
+      } catch (e) {
+        colorCache.set(url, null);
+        resolve(null);
+      }
+    };
+    img.onerror = () => { colorCache.set(url, null); resolve(null); };
+    img.src = url;
+  });
+}
+function clampForTint({ r, g, b }) {
+  // Mix with a deep base so the tint is rich but never blown out
+  const max = Math.max(r, g, b);
+  const scale = max > 200 ? 200 / max : 1;
+  return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
+}
+function applyHeroTint(color) {
+  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "10, 10, 10";
+  document.documentElement.style.setProperty("--hero-tint-rgb", rgb);
+}
+function applyModalTint(color) {
+  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "20, 20, 20";
+  document.documentElement.style.setProperty("--modal-tint-rgb", rgb);
+}
+
 // ---------- Lazy image loader ----------
 const lazyImageObserver = new IntersectionObserver((entries) => {
   entries.forEach(e => {
@@ -302,6 +370,10 @@ async function renderHero(item) {
   const trailerEl = $("#hero-trailer");
   if (item.backdrop) preloadImage(item.backdrop);
   bg.style.backgroundImage = item.backdrop ? `url("${item.backdrop}")` : "";
+  // Reset then extract dominant color for ambient tint
+  applyHeroTint(null);
+  if (item.poster) extractDominantColor(item.poster).then(c => { if (heroItem === item) applyHeroTint(c); });
+  else if (item.backdrop) extractDominantColor(item.backdrop).then(c => { if (heroItem === item) applyHeroTint(c); });
   trailerEl.innerHTML = "";
 
   const match = pseudoMatch(item);
@@ -783,6 +855,9 @@ async function openModal(item, opts = {}) {
 
   const bg = item.backdrop || item.poster;
   $("#modal-bg").style.backgroundImage = bg ? `url("${bg}")` : "";
+  applyModalTint(null);
+  if (item.poster) extractDominantColor(item.poster).then(c => { if (currentItem === item) applyModalTint(c); });
+  else if (bg) extractDominantColor(bg).then(c => { if (currentItem === item) applyModalTint(c); });
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
   $(".modal-body").classList.remove("playing");
