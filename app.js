@@ -1001,12 +1001,14 @@ async function openModal(item, opts = {}) {
   if (opts.autoplay) startPlayer(item);
 }
 
+let currentSeasonEpisodes = [];
 async function loadEpisodes(tvId, seasonNum) {
   currentSeason = seasonNum;
   const list = $("#episode-list");
   list.innerHTML = `<div class="empty" style="padding:24px 0">Loading episodes…</div>`;
   try {
     const sd = await tmdb(`/tv/${tvId}/season/${seasonNum}`);
+    currentSeasonEpisodes = sd.episodes || [];
     list.innerHTML = "";
     const last = progressMap[progressKey(currentItem)];
     sd.episodes.forEach(ep => {
@@ -1050,18 +1052,127 @@ function makeSimilarCard(item) {
   return div;
 }
 
-function startPlayer(item, ctx = {}) {
-  const url = buildPlayerURL(item, ctx);
-  $("#modal-trailer").innerHTML = ""; // stop trailer audio
+let playingItem = null;
+let playingCtx = {};
+let nextEpContext = null;
+let skipIntroShown = false;
+let upNextShown = false;
+let upNextTimer = null;
+let lastSkipSeek = 0;
+
+function computeNextEpisode(item, ctx) {
+  if (item.type === "tv" && currentSeasonEpisodes && currentSeasonEpisodes.length) {
+    const idx = currentSeasonEpisodes.findIndex(ep => ep.episode_number === ctx.episode);
+    if (idx >= 0 && idx < currentSeasonEpisodes.length - 1) {
+      const ep = currentSeasonEpisodes[idx + 1];
+      return {
+        item, ctx: { season: ctx.season, episode: ep.episode_number },
+        label: `S${ctx.season} E${ep.episode_number}${ep.name ? " · " + ep.name : ""}`,
+      };
+    }
+    // Try next season (use modalDetails.seasons)
+    if (modalDetails?.seasons) {
+      const next = modalDetails.seasons.find(s => s.season_number === (ctx.season + 1) && s.episode_count > 0);
+      if (next) return {
+        item, ctx: { season: next.season_number, episode: 1 },
+        label: `S${next.season_number} E1 · Season Premiere`,
+        nextSeason: true,
+      };
+    }
+  }
+  if (item.type === "anime" && !item.isMovie && item.episodes && ctx.episode < item.episodes) {
+    return { item, ctx: { episode: ctx.episode + 1 }, label: `Episode ${ctx.episode + 1}` };
+  }
+  return null;
+}
+
+function startPlayer(item, ctx = {}, seekOffsetSec = null) {
+  const url = buildPlayerURL(item, ctx, seekOffsetSec);
+  $("#modal-trailer").innerHTML = "";
   $(".modal-body").classList.add("playing");
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
     allowfullscreen referrerpolicy="no-referrer"></iframe>`;
   $("#modal").scrollTop = 0;
+
+  playingItem = item;
+  playingCtx = ctx;
+  skipIntroShown = false;
+  upNextShown = false;
+  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null; }
+  removeSkipIntro(); removeUpNext();
+  nextEpContext = computeNextEpisode(item, ctx);
 }
 
-function buildPlayerURL(item, ctx = {}) {
+function removeSkipIntro() { document.querySelector(".player-overlay-skip")?.remove(); skipIntroShown = false; }
+function removeUpNext() { document.querySelector(".player-overlay-upnext")?.remove(); upNextShown = false; if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null; } }
+
+function showSkipIntro() {
+  if (skipIntroShown) return;
+  skipIntroShown = true;
+  const btn = document.createElement("button");
+  btn.className = "player-overlay-skip";
+  btn.textContent = "Skip Intro »";
+  btn.addEventListener("click", () => {
+    if (!playingItem) return;
+    // Avoid spamming reloads
+    if (Date.now() - lastSkipSeek < 2000) return;
+    lastSkipSeek = Date.now();
+    const target = (lastTimestamp || 0) + 80;
+    startPlayer(playingItem, playingCtx, target);
+  });
+  $("#player-wrap").appendChild(btn);
+}
+
+function showUpNext() {
+  if (upNextShown || !nextEpContext) return;
+  upNextShown = true;
+  let count = 10;
+  const overlay = document.createElement("div");
+  overlay.className = "player-overlay-upnext";
+  overlay.innerHTML = `
+    <div class="upnext-label">Up Next</div>
+    <div class="upnext-title">${escapeHTML(nextEpContext.label)}</div>
+    <div class="upnext-countdown">Playing in <span class="upnext-count">${count}</span>s
+      <span class="upnext-progress"><div style="width:0%"></div></span>
+    </div>
+    <div class="upnext-buttons">
+      <button class="upnext-play">▶ Play Now</button>
+      <button class="upnext-cancel">Cancel</button>
+    </div>`;
+  $("#player-wrap").appendChild(overlay);
+
+  const updateProgress = () => {
+    const pct = Math.round(((10 - count) / 10) * 100);
+    overlay.querySelector(".upnext-progress > div").style.width = pct + "%";
+    overlay.querySelector(".upnext-count").textContent = count;
+  };
+  updateProgress();
+  upNextTimer = setInterval(() => {
+    count--;
+    if (count <= 0) {
+      clearInterval(upNextTimer); upNextTimer = null;
+      const next = nextEpContext;
+      removeUpNext();
+      if (next) startPlayer(next.item, next.ctx);
+    } else {
+      updateProgress();
+    }
+  }, 1000);
+  overlay.querySelector(".upnext-play").addEventListener("click", () => {
+    const next = nextEpContext;
+    removeUpNext();
+    if (next) startPlayer(next.item, next.ctx);
+  });
+  overlay.querySelector(".upnext-cancel").addEventListener("click", () => {
+    removeUpNext();
+  });
+}
+
+let lastTimestamp = 0;
+
+function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
   const params = new URLSearchParams();
   params.set("color", PLAYER_COLOR);
   params.set("nextEpisode", "true");
@@ -1069,8 +1180,12 @@ function buildPlayerURL(item, ctx = {}) {
   params.set("autoplayNextEpisode", "true");
   params.set("overlay", "true");
 
-  const last = progressMap[progressKey(item)];
-  if (last?.timestamp) params.set("progress", Math.floor(last.timestamp));
+  if (overrideSeek != null) {
+    params.set("progress", Math.floor(overrideSeek));
+  } else {
+    const last = progressMap[progressKey(item)];
+    if (last?.timestamp) params.set("progress", Math.floor(last.timestamp));
+  }
 
   let path;
   if (item.type === "movie") path = `/movie/${item.id}`;
@@ -1086,6 +1201,8 @@ function closeModal() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  playingItem = null; nextEpContext = null;
+  removeSkipIntro(); removeUpNext();
   // Restore hero trailer if it was paused
   const heroIframe = $("#hero-trailer iframe");
   if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
@@ -1175,6 +1292,23 @@ window.addEventListener("message", (event) => {
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
   };
   saveJSON(STORAGE.progress, progressMap);
+
+  // ----- Skip Intro & Up Next overlays -----
+  if (typeof data.timestamp === "number") lastTimestamp = data.timestamp;
+  const isEpisodeContent = playingItem && (playingItem.type === "tv" || (playingItem.type === "anime" && !playingItem.isMovie));
+  // Skip Intro: show during 5s..120s of episode runtime (and only briefly)
+  if (isEpisodeContent && typeof data.timestamp === "number") {
+    if (data.timestamp >= 5 && data.timestamp <= 120) {
+      if (!skipIntroShown) showSkipIntro();
+    } else if (skipIntroShown && data.timestamp > 130) {
+      removeSkipIntro();
+    }
+  }
+  // Up Next: in last ~25 seconds, with a known next episode
+  if (nextEpContext && typeof data.timestamp === "number" && typeof data.duration === "number" && data.duration > 60) {
+    const remaining = data.duration - data.timestamp;
+    if (remaining > 0 && remaining <= 25 && !upNextShown) showUpNext();
+  }
 });
 function progressKey(item) { return `${item.type}:${item.id}`; }
 async function getRecommendedForYou() {
@@ -1323,6 +1457,8 @@ function closeModalSilent() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  playingItem = null; nextEpContext = null;
+  removeSkipIntro(); removeUpNext();
   const heroIframe = $("#hero-trailer iframe");
   if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
 }
