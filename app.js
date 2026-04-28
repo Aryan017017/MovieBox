@@ -97,6 +97,26 @@ function loadProfileData() {
 function saveProgress() { saveJSON(profileStorageKey(STORAGE.progress), progressMap); }
 function saveMyList() { saveJSON(profileStorageKey(STORAGE.list), myList); }
 
+// Migrate old show-level progress into per-episode entries (one time)
+function migrateEpisodeProgress() {
+  let changed = false;
+  for (const [k, v] of Object.entries(progressMap)) {
+    if (!v || v.isEpisode) continue;
+    if ((v.itemType === "tv" || v.itemType === "anime") && v.episode) {
+      const epKey = `${v.itemType}:${v.itemId}:s${v.season || 1}:e${v.episode}`;
+      if (!progressMap[epKey]) {
+        progressMap[epKey] = {
+          progress: v.progress, timestamp: v.timestamp, duration: v.duration,
+          season: v.season || 1, episode: v.episode,
+          updatedAt: v.updatedAt || Date.now(), isEpisode: true,
+        };
+        changed = true;
+      }
+    }
+  }
+  if (changed) saveProgress();
+}
+
 // ---------- TMDB ----------
 const tmdbCache = new Map();
 async function tmdb(path, params = {}) {
@@ -296,8 +316,12 @@ function makeCard(item, opts = {}) {
   const p = progressMap[key];
   let progressBar = "", cwMeta = "", watchedBadge = "";
   if (p && p.progress >= 95) watchedBadge = `<div class="watched-badge">Watched</div>`;
-  if (opts.showProgress && p?.progress) {
+  // Always show a thin progress bar if there's any progress (Netflix style)
+  if (p?.progress && p.progress > 1 && p.progress < 95) {
     progressBar = `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>`;
+  }
+  // Continue Watching row gets richer meta (S/E + time left)
+  if (opts.showProgress && p?.progress) {
     let epLabel = "";
     if (item.type === "tv" && p.season && p.episode) epLabel = `S${p.season}:E${p.episode}`;
     else if (item.type === "anime" && p.episode) epLabel = `Ep ${p.episode}`;
@@ -1187,11 +1211,21 @@ async function openModal(item, opts = {}) {
       const last = progressMap[progressKey(item)];
       for (let i = 1; i <= item.episodes; i++) {
         const ep = document.createElement("div");
-        ep.className = "episode-item";
         const isCurrent = last?.episode === i;
+        // Per-episode progress lookup (anime always season=1)
+        const epProg = progressMap[episodeProgressKey(item, 1, i)];
+        const epPct = epProg?.progress || (isCurrent ? last?.progress : 0) || 0;
+        const isFinished = epPct >= 95;
+        ep.className = "episode-item" + (isFinished ? " ep-finished" : "") + (isCurrent ? " ep-current" : "");
+        let barHTML = "";
+        if (isFinished) {
+          barHTML = `<div class="ep-progress ep-progress-done"><div style="width:100%"></div></div><div class="ep-watched-tick">✓</div>`;
+        } else if (epPct > 1) {
+          barHTML = `<div class="ep-progress"><div style="width:${Math.min(100, Math.round(epPct))}%"></div></div>`;
+        }
         ep.innerHTML = `
           <div class="episode-num">${i}</div>
-          <div class="episode-thumb" style="background-image:url('${item.poster || ""}')">${isCurrent && last.progress ? `<div class="ep-progress"><div style="width:${Math.min(100, Math.round(last.progress))}%"></div></div>` : ""}</div>
+          <div class="episode-thumb" style="background-image:url('${item.poster || ""}')">${barHTML}</div>
           <div class="episode-info">
             <div class="ep-head"><span class="ep-title">Episode ${i}</span></div>
             <div class="ep-overview"></div>
@@ -1217,12 +1251,22 @@ async function loadEpisodes(tvId, seasonNum) {
     const last = progressMap[progressKey(currentItem)];
     sd.episodes.forEach(ep => {
       const isCurrent = last?.season === seasonNum && last.episode === ep.episode_number;
+      // Per-episode progress (every watched episode keeps its own bar)
+      const epProg = progressMap[episodeProgressKey(currentItem, seasonNum, ep.episode_number)];
+      const epPct = epProg?.progress || (isCurrent ? last?.progress : 0) || 0;
+      const isFinished = epPct >= 95;
       const div = document.createElement("div");
-      div.className = "episode-item";
+      div.className = "episode-item" + (isFinished ? " ep-finished" : "") + (isCurrent ? " ep-current" : "");
       const thumb = ep.still_path ? `${IMG}/w300${ep.still_path}` : (currentItem.backdrop || "");
+      let barHTML = "";
+      if (isFinished) {
+        barHTML = `<div class="ep-progress ep-progress-done"><div style="width:100%"></div></div><div class="ep-watched-tick">✓</div>`;
+      } else if (epPct > 1) {
+        barHTML = `<div class="ep-progress"><div style="width:${Math.min(100, Math.round(epPct))}%"></div></div>`;
+      }
       div.innerHTML = `
         <div class="episode-num">${ep.episode_number}</div>
-        <div class="episode-thumb" style="background-image:url('${thumb}')">${isCurrent && last.progress ? `<div class="ep-progress"><div style="width:${Math.min(100, Math.round(last.progress))}%"></div></div>` : ""}</div>
+        <div class="episode-thumb" style="background-image:url('${thumb}')">${barHTML}</div>
         <div class="episode-info">
           <div class="ep-head">
             <span class="ep-title">${escapeHTML(ep.name || "Episode " + ep.episode_number)}</span>
@@ -1525,6 +1569,19 @@ window.addEventListener("message", (event) => {
     itemType: currentItem.type, itemId: currentItem.id,
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
   };
+  // Per-episode progress tracking (Netflix-style: every watched episode keeps its own bar)
+  if ((currentItem.type === "tv" || currentItem.type === "anime") && data.episode) {
+    const epKey = episodeProgressKey(currentItem, data.season || 1, data.episode);
+    progressMap[epKey] = {
+      progress: data.progress,
+      timestamp: data.timestamp,
+      duration: data.duration,
+      season: data.season || 1,
+      episode: data.episode,
+      updatedAt: Date.now(),
+      isEpisode: true,
+    };
+  }
   saveProgress();
 
   // ----- Skip Intro & Up Next overlays -----
@@ -1545,6 +1602,7 @@ window.addEventListener("message", (event) => {
   }
 });
 function progressKey(item) { return `${item.type}:${item.id}`; }
+function episodeProgressKey(item, season, episode) { return `${item.type}:${item.id}:s${season}:e${episode}`; }
 async function getRecommendedForYou() {
   // Seed from My List + most recent Continue Watching
   const seeds = [];
@@ -1575,7 +1633,7 @@ async function getRecommendedForYou() {
 
 function getContinueWatching() {
   return Object.entries(progressMap)
-    .filter(([, v]) => v.progress > 1 && v.progress < 95)
+    .filter(([, v]) => !v.isEpisode && v.progress > 1 && v.progress < 95)
     .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
     .slice(0, 20)
     .map(([, v]) => ({
@@ -1934,6 +1992,7 @@ $("#manage-profiles").addEventListener("click", () => {
 function selectProfile(p) {
   activeProfile = p; saveJSON(STORAGE.profile, p);
   loadProfileData();
+  migrateEpisodeProgress();
   manageMode = false; document.body.classList.remove("profile-manage-mode");
   $("#manage-profiles").textContent = "Manage Profiles";
   $("#profile-screen").classList.add("hidden");
