@@ -1193,6 +1193,293 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .footer-copy { font-size: 11px; }
 }
 
+/* ================ Continue Watching dismiss-X ================ */
+.cw-dismiss {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,0.78);
+  border: 1.5px solid rgba(255,255,255,0.4);
+  color: #fff; font-size: 16px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity 180ms, transform 180ms, border-color 180ms;
+  z-index: 5; line-height: 1; padding: 0;
+}
+.card:hover .cw-dismiss { opacity: 1; }
+.cw-dismiss:hover { border-color: #fff; transform: scale(1.1); background: rgba(229,9,20,0.9); }
+
+/* ================ Progress ring on hover ================ */
+.progress-ring {
+  position: absolute; top: 8px; left: 8px;
+  width: 44px; height: 44px;
+  opacity: 0; transition: opacity 200ms;
+  pointer-events: none; z-index: 4;
+}
+.card:hover .progress-ring { opacity: 1; }
+.progress-ring svg {
+  width: 100%; height: 100%;
+  transform: rotate(-90deg);
+}
+.progress-ring .ring-bg {
+  fill: rgba(0,0,0,0.6);
+  stroke: rgba(255,255,255,0.25);
+  stroke-width: 3;
+}
+.progress-ring .ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 240ms var(--ease);
+}
+.progress-ring .ring-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* ================ Stats page ================ */
+.page-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4%; margin-bottom: 24px; }
+.page-header-actions { display: flex; gap: 12px; }
+.page-action-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff; padding: 8px 16px;
+  border-radius: 4px; font-size: 14px;
+  text-decoration: none; transition: all 180ms;
+}
+.page-action-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.25); }
+
+.stats-hero {
+  text-align: center; padding: 40px 4% 32px;
+  background: linear-gradient(135deg, rgba(229,9,20,0.18) 0%, rgba(229,9,20,0.04) 60%, transparent 100%);
+  border-radius: 12px; margin: 0 4% 32px;
+}
+.stats-hero-num {
+  font-size: 96px; font-weight: 900; line-height: 1;
+  background: linear-gradient(135deg, #ff3b46, #ff8a00);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; letter-spacing: -2px;
+}
+.stats-hero-label { font-size: 18px; color: #d2d2d2; margin-top: 8px; letter-spacing: 1px; }
+
+.stats-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  padding: 0 4%; margin-bottom: 40px;
+}
+.stat-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 22px 18px; text-align: center;
+  transition: all 220ms;
+}
+.stat-card:hover { background: rgba(255,255,255,0.07); transform: translateY(-3px); border-color: rgba(255,255,255,0.18); }
+.stat-card-icon { font-size: 28px; margin-bottom: 8px; }
+.stat-card-num { font-size: 32px; font-weight: 800; color: #fff; }
+.stat-card-label { font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+.stats-section { padding: 0 4%; margin-bottom: 32px; }
+.stats-section h2 { font-size: 22px; margin-bottom: 16px; }
+.stats-feature-card {
+  position: relative; height: 220px; border-radius: 12px; overflow: hidden;
+  cursor: pointer; transition: transform 220ms;
+}
+.stats-feature-card:hover { transform: scale(1.01); }
+.stats-feature-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+}
+.stats-feature-fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.2) 100%);
+}
+.stats-feature-info { position: relative; padding: 32px 28px; max-width: 60%; }
+.stats-feature-eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+.stats-feature-info h3 { font-size: 32px; font-weight: 800; margin: 8px 0; }
+.stats-feature-meta { font-size: 16px; color: #d2d2d2; }
+
+.ratings-summary { display: flex; gap: 12px; flex-wrap: wrap; }
+.rating-pill {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  padding: 10px 16px; border-radius: 20px; font-size: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rating-pill span { font-size: 18px; }
+
+/* ================ History date grouping ================ */
+.history-group-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0 4%; margin: 28px 0 14px;
+}
+.history-group-label h2 { font-size: 18px; font-weight: 600; color: #fff; margin: 0; }
+.history-group-label .group-count { color: #888; font-size: 13px; }
+
+/* ================ Rating buttons on modal ================ */
+.modal-hero-buttons .rating-btn {
+  font-size: 16px; transition: all 180ms;
+}
+.modal-hero-buttons .rating-btn.rated {
+  background: var(--accent); border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+/* ================ Per-season progress bars ================ */
+.season-progress-bars {
+  margin-top: 18px; padding: 16px; border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.season-progress-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.5px; color: #999; margin-bottom: 12px;
+}
+.season-progress-row {
+  display: grid; grid-template-columns: 40px 1fr 70px;
+  align-items: center; gap: 12px; margin-bottom: 8px;
+}
+.season-progress-row:last-child { margin-bottom: 0; }
+.sp-label { font-weight: 700; font-size: 14px; }
+.sp-bar {
+  height: 6px; background: rgba(255,255,255,0.1);
+  border-radius: 3px; overflow: hidden;
+}
+.sp-bar > div { height: 100%; background: var(--accent); transition: width 360ms var(--ease); }
+.sp-count { font-size: 12px; color: #999; text-align: right; }
+.season-progress-row.done .sp-label { color: #46d369; }
+.season-progress-row.done .sp-bar > div { background: #46d369; }
+.season-progress-row.done .sp-count { color: #46d369; }
+
+/* ================ New Episode badge ================ */
+.new-episode-badge {
+  display: inline-block;
+  background: var(--accent); color: #fff;
+  padding: 4px 10px; border-radius: 4px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  margin-bottom: 10px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(229,9,20,0.5); }
+  50% { opacity: 0.92; box-shadow: 0 0 0 8px rgba(229,9,20,0); }
+}
+
+/* ================ Year recap card ================ */
+.recap-screen {
+  min-height: 80vh; display: flex; align-items: center; justify-content: center;
+  padding: 40px 4%;
+}
+.recap-card {
+  max-width: 720px; width: 100%;
+  background: linear-gradient(135deg, rgba(229,9,20,0.12) 0%, rgba(20,20,40,0.85) 50%, rgba(0,0,0,0.8) 100%);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+  padding: 48px 40px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.recap-eyebrow {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 3px; color: var(--accent); margin-bottom: 16px;
+}
+.recap-hero-num {
+  font-size: 144px; font-weight: 900; line-height: 0.9;
+  background: linear-gradient(135deg, #ff3b46, #ff8a00, #ffd700);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; letter-spacing: -4px;
+}
+.recap-hero-label { font-size: 18px; color: #ccc; margin-top: 8px; }
+.recap-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 32px 0; }
+.recap-stats-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+}
+.recap-stats-grid .rs-num { font-size: 32px; font-weight: 800; color: #fff; }
+.recap-stats-grid .rs-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+.recap-top { text-align: left; }
+.recap-top-eyebrow { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+.recap-top-card {
+  position: relative; height: 140px; border-radius: 10px;
+  overflow: hidden; cursor: pointer; transition: transform 220ms;
+}
+.recap-top-card:hover { transform: scale(1.02); }
+.recap-top-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.recap-top-fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+}
+.recap-top-info { position: relative; padding: 22px 24px; }
+.recap-top-info h3 { font-size: 22px; margin: 0 0 6px; }
+.recap-top-info > div { font-size: 14px; color: #d2d2d2; }
+.recap-actions {
+  display: flex; gap: 12px; justify-content: center; margin-top: 32px;
+}
+.recap-actions .btn,
+.recap-actions .btn-secondary {
+  padding: 12px 24px; border-radius: 4px; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+}
+.recap-actions .btn { background: var(--accent); color: #fff; border: none; }
+.recap-actions .btn-secondary {
+  background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ================ Up Next polished card ================ */
+.player-overlay-upnext.rich {
+  position: absolute; bottom: 24px; right: 24px;
+  width: 460px; max-width: 90%;
+  background: rgba(15,15,15,0.96); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  animation: upnextSlide 360ms var(--ease);
+  z-index: 9999; padding: 0;
+}
+@keyframes upnextSlide {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.upnext-rich { display: grid; grid-template-columns: 160px 1fr; }
+.upnext-thumb { background-size: cover; background-position: center; min-height: 180px; }
+.upnext-text { padding: 16px 18px; }
+.upnext-rich .upnext-label {
+  color: var(--accent); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px;
+}
+.upnext-rich .upnext-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; line-height: 1.2; }
+.upnext-rich .upnext-sub { font-size: 12px; color: #999; margin-bottom: 8px; }
+.upnext-rich .upnext-overview {
+  font-size: 12px; color: #ccc; margin-bottom: 12px; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.upnext-rich .upnext-countdown { font-size: 13px; color: #ccc; margin-bottom: 10px; }
+.upnext-rich .upnext-progress {
+  display: block; height: 3px; margin-top: 6px;
+  background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden;
+}
+.upnext-rich .upnext-progress > div {
+  height: 100%; background: var(--accent);
+  transition: width 1s linear;
+}
+.upnext-rich .upnext-buttons { display: flex; gap: 8px; }
+.upnext-rich .upnext-buttons button {
+  padding: 8px 14px; border-radius: 4px; font-size: 13px; font-weight: 600;
+  border: none; cursor: pointer; transition: all 180ms;
+}
+.upnext-rich .upnext-buttons .upnext-play { background: #fff; color: #000; flex: 1; }
+.upnext-rich .upnext-buttons .upnext-play:hover { background: rgba(255,255,255,0.85); }
+.upnext-rich .upnext-buttons .upnext-cancel { background: rgba(255,255,255,0.12); color: #fff; }
+.upnext-rich .upnext-buttons .upnext-cancel:hover { background: rgba(255,255,255,0.2); }
+
+@media (max-width: 640px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-hero-num { font-size: 64px; }
+  .recap-hero-num { font-size: 88px; }
+  .recap-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .upnext-rich { grid-template-columns: 1fr; }
+  .upnext-thumb { min-height: 90px; }
+  .player-overlay-upnext.rich { width: calc(100% - 32px); right: 16px; bottom: 16px; }
+  .stats-feature-info { padding: 20px; max-width: 90%; }
+  .stats-feature-info h3 { font-size: 22px; }
+}
+
 /* ================ Touch (no hover) ================ */
 @media (hover: none) and (pointer: coarse) {
   .card:hover { transform: none; box-shadow: none; }

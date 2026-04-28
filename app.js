@@ -60,11 +60,16 @@ const STORAGE = {
   list: "moviebox:mylist",
   profile: "moviebox:profile",
   onboarded: "moviebox:onboarded",
+  ratings: "moviebox:ratings",      // thumbs up/down per title
+  dismissed: "moviebox:dismissed",  // dismissed Continue Watching items
+  recapShown: "moviebox:recap",     // year recap shown flag
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 let progressMap = {};
 let myList = [];
+let ratingsMap = {};      // { "movie:550": "up" | "down" | "love" }
+let dismissedMap = {};    // { "movie:550": true }
 let activeProfile = loadJSON(STORAGE.profile, null);
 PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
 if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
@@ -76,6 +81,15 @@ function profileStorageKey(base) {
 function loadProfileData() {
   progressMap = loadJSON(profileStorageKey(STORAGE.progress), {});
   myList = loadJSON(profileStorageKey(STORAGE.list), []);
+  ratingsMap = loadJSON(profileStorageKey(STORAGE.ratings), {});
+  dismissedMap = loadJSON(profileStorageKey(STORAGE.dismissed), {});
+  // Auto-cleanup: dismiss items not touched in 30+ days
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
+  for (const [k, v] of Object.entries(progressMap)) {
+    if (!v.isEpisode && v.updatedAt && v.updatedAt < thirtyDaysAgo && v.progress < 95) {
+      dismissedMap[k] = true;
+    }
+  }
   // One-time migration: copy legacy global data into the first profile that loads it
   if (activeProfile?.id && Object.keys(progressMap).length === 0) {
     const legacyP = loadJSON(STORAGE.progress, null);
@@ -96,6 +110,15 @@ function loadProfileData() {
 }
 function saveProgress() { saveJSON(profileStorageKey(STORAGE.progress), progressMap); }
 function saveMyList() { saveJSON(profileStorageKey(STORAGE.list), myList); }
+function saveRatings() { saveJSON(profileStorageKey(STORAGE.ratings), ratingsMap); }
+function saveDismissed() { saveJSON(profileStorageKey(STORAGE.dismissed), dismissedMap); }
+function getRating(item) { return ratingsMap[`${item.type}:${item.id}`] || null; }
+function setRating(item, rating) {
+  const k = `${item.type}:${item.id}`;
+  if (ratingsMap[k] === rating) delete ratingsMap[k];  // toggle off
+  else ratingsMap[k] = rating;
+  saveRatings();
+}
 
 // Migrate old show-level progress into per-episode entries (one time)
 function migrateEpisodeProgress() {
@@ -333,8 +356,28 @@ function makeCard(item, opts = {}) {
     if (epLabel || leftLabel)
       cwMeta = `<div class="cw-meta"><span class="ep">${epLabel}</span><span class="left">${leftLabel}</span></div>`;
   }
+  // Dismiss-X (only on Continue Watching) and progress ring on hover
+  const dismissBtn = opts.showProgress
+    ? `<button class="cw-dismiss" title="Remove from Continue Watching" aria-label="Dismiss">×</button>`
+    : "";
+  let progressRing = "";
+  if (p?.progress && p.progress > 1 && p.progress < 95 && p.duration && p.timestamp) {
+    const pct = Math.min(100, Math.round(p.progress));
+    const min = Math.max(1, Math.ceil((p.duration - p.timestamp) / 60));
+    const circumference = 2 * Math.PI * 18;
+    const offset = circumference - (pct / 100) * circumference;
+    progressRing = `<div class="progress-ring" aria-hidden="true">
+      <svg viewBox="0 0 44 44">
+        <circle cx="22" cy="22" r="18" class="ring-bg"/>
+        <circle cx="22" cy="22" r="18" class="ring-fg" style="stroke-dasharray:${circumference};stroke-dashoffset:${offset}"/>
+      </svg>
+      <span class="ring-label">${min}m</span>
+    </div>`;
+  }
   card.innerHTML = `
     ${watchedBadge}
+    ${dismissBtn}
+    ${progressRing}
     ${cwMeta}
     ${progressBar}
     <div class="card-info">
@@ -349,6 +392,18 @@ function makeCard(item, opts = {}) {
       </div>
       <div class="title">${escapeHTML(item.title || "")}</div>
     </div>`;
+  if (dismissBtn) {
+    card.querySelector(".cw-dismiss").addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      dismissedMap[progressKey(item)] = true;
+      saveDismissed();
+      card.style.transition = "opacity 200ms, transform 200ms";
+      card.style.opacity = "0";
+      card.style.transform = "scale(0.85)";
+      setTimeout(() => card.remove(), 220);
+    });
+  }
   card.addEventListener("click", () => openModal(item));
   card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openTitle(item); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
@@ -791,7 +846,8 @@ function showHistory() {
   const entries = Object.entries(progressMap)
     .filter(([, v]) => v.title)
     .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
-  rows.innerHTML = `<div class="page-header"><h1>Watch History</h1></div>`;
+  rows.innerHTML = `<div class="page-header"><h1>Watch History</h1>
+    <div class="page-header-actions"><a href="#/stats" class="page-action-btn">📊 View Stats</a></div></div>`;
   if (!entries.length) {
     rows.innerHTML += `
       <div class="empty-state">
@@ -815,8 +871,36 @@ function showHistory() {
     <div class="history-stat"><div class="stat-num">${totalMinutes < 60 ? totalMinutes + "m" : Math.round(totalMinutes / 60) + "h"}</div><div class="stat-label">Watched</div></div>`;
   rows.appendChild(stats);
 
-  const grid = document.createElement("div");
-  grid.className = "history-grid";
+  // Group by time bucket
+  const now = Date.now();
+  const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+  const startOfYesterday = startOfToday.getTime() - 86400000;
+  const sevenDaysAgo = now - 7 * 86400000;
+  const thirtyDaysAgo = now - 30 * 86400000;
+  const buckets = { "Today": [], "Yesterday": [], "This Week": [], "This Month": [], "Older": [] };
+  entries.forEach(e => {
+    const ts = e[1].updatedAt || 0;
+    if (ts >= startOfToday.getTime()) buckets["Today"].push(e);
+    else if (ts >= startOfYesterday) buckets["Yesterday"].push(e);
+    else if (ts >= sevenDaysAgo) buckets["This Week"].push(e);
+    else if (ts >= thirtyDaysAgo) buckets["This Month"].push(e);
+    else buckets["Older"].push(e);
+  });
+
+  Object.entries(buckets).forEach(([label, items]) => {
+    if (!items.length) return;
+    const groupLabel = document.createElement("div");
+    groupLabel.className = "history-group-label";
+    groupLabel.innerHTML = `<h2>${label}</h2><span class="group-count">${items.length} ${items.length === 1 ? "title" : "titles"}</span>`;
+    rows.appendChild(groupLabel);
+    const grid = document.createElement("div");
+    grid.className = "history-grid";
+    renderHistoryGroup(grid, items);
+    rows.appendChild(grid);
+  });
+}
+
+function renderHistoryGroup(grid, entries) {
   entries.forEach(([key, v]) => {
     const item = {
       id: v.itemId, type: v.itemType, title: v.title,
@@ -877,7 +961,177 @@ function showHistory() {
     });
     grid.appendChild(row);
   });
-  rows.appendChild(grid);
+}
+
+// ============== STATS PAGE ==============
+async function showStats() {
+  setActive("history");
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `<div class="page-header"><h1>Your Stats</h1>
+    <div class="page-header-actions">
+      <a href="#/recap" class="page-action-btn">✨ ${new Date().getFullYear()} Recap</a>
+      <a href="#/history" class="page-action-btn">← Back to History</a>
+    </div></div>`;
+
+  const entries = Object.entries(progressMap).filter(([, v]) => v.title);
+  if (!entries.length) {
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">📊</div><h2>No stats yet</h2><p>Watch something to see your stats.</p></div>`;
+    return;
+  }
+
+  // Compute stats
+  const totalSeconds = entries.reduce((acc, [, v]) => acc + (v.timestamp || 0), 0) +
+    Object.values(progressMap).filter(v => v.isEpisode).reduce((a, v) => a + (v.timestamp || 0), 0);
+  const totalHours = Math.round(totalSeconds / 3600);
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const finished = entries.filter(([, v]) => v.progress >= 95).length;
+  const inProgress = entries.filter(([, v]) => v.progress > 1 && v.progress < 95).length;
+  const finishRate = entries.length ? Math.round((finished / entries.length) * 100) : 0;
+
+  // Streak calculation: count consecutive days back from today with any activity
+  const allTs = Object.values(progressMap).map(v => v.updatedAt).filter(Boolean);
+  const dayKey = (ts) => { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime(); };
+  const dayBucket = new Set(allTs.map(dayKey));
+  let streak = 0;
+  let cur = new Date(); cur.setHours(0,0,0,0);
+  // If no activity today, allow yesterday as start
+  if (!dayBucket.has(cur.getTime())) cur.setDate(cur.getDate() - 1);
+  while (dayBucket.has(cur.getTime())) { streak++; cur.setDate(cur.getDate() - 1); }
+
+  // This month minutes
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const monthSecs = entries.filter(([, v]) => (v.updatedAt || 0) >= monthStart.getTime())
+    .reduce((a, [, v]) => a + (v.timestamp || 0), 0) +
+    Object.values(progressMap).filter(v => v.isEpisode && (v.updatedAt || 0) >= monthStart.getTime())
+    .reduce((a, v) => a + (v.timestamp || 0), 0);
+  const monthHours = Math.round(monthSecs / 3600);
+
+  // Type breakdown
+  const movies = entries.filter(([, v]) => v.itemType === "movie").length;
+  const shows = entries.filter(([, v]) => v.itemType === "tv").length;
+  const anime = entries.filter(([, v]) => v.itemType === "anime").length;
+
+  // Most watched (by accumulated timestamp)
+  const accBy = {};
+  entries.forEach(([k, v]) => { accBy[k] = { item: v, secs: v.timestamp || 0 }; });
+  Object.values(progressMap).filter(v => v.isEpisode).forEach(v => {
+    const showKey = `${v.itemType || "tv"}:${v.itemId || ""}`;
+    // Find parent
+    const parent = entries.find(([k]) => k === showKey || k.startsWith(`${v.itemType || "tv"}:`));
+    if (parent) accBy[parent[0]].secs += v.timestamp || 0;
+  });
+  const topShow = Object.values(accBy).sort((a, b) => b.secs - a.secs)[0];
+
+  rows.innerHTML += `
+    <div class="stats-hero">
+      <div class="stats-hero-num">${totalHours}</div>
+      <div class="stats-hero-label">hours watched all-time</div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-card-icon">🔥</div><div class="stat-card-num">${streak}</div><div class="stat-card-label">Day Streak</div></div>
+      <div class="stat-card"><div class="stat-card-icon">📅</div><div class="stat-card-num">${monthHours}h</div><div class="stat-card-label">This Month</div></div>
+      <div class="stat-card"><div class="stat-card-icon">✅</div><div class="stat-card-num">${finished}</div><div class="stat-card-label">Finished</div></div>
+      <div class="stat-card"><div class="stat-card-icon">⏱</div><div class="stat-card-num">${inProgress}</div><div class="stat-card-label">In Progress</div></div>
+      <div class="stat-card"><div class="stat-card-icon">🎬</div><div class="stat-card-num">${movies}</div><div class="stat-card-label">Movies</div></div>
+      <div class="stat-card"><div class="stat-card-icon">📺</div><div class="stat-card-num">${shows}</div><div class="stat-card-label">TV Shows</div></div>
+      <div class="stat-card"><div class="stat-card-icon">🎌</div><div class="stat-card-num">${anime}</div><div class="stat-card-label">Anime</div></div>
+      <div class="stat-card"><div class="stat-card-icon">🎯</div><div class="stat-card-num">${finishRate}%</div><div class="stat-card-label">Finish Rate</div></div>
+    </div>
+    ${topShow ? `
+    <div class="stats-section">
+      <h2>Most Watched</h2>
+      <div class="stats-feature-card" data-id="${topShow.item.itemId}" data-type="${topShow.item.itemType}">
+        <div class="stats-feature-bg" style="background-image:url('${topShow.item.backdrop || topShow.item.backdropMd || topShow.item.poster || ""}')"></div>
+        <div class="stats-feature-fade"></div>
+        <div class="stats-feature-info">
+          <div class="stats-feature-eyebrow">Your top title</div>
+          <h3>${escapeHTML(topShow.item.title)}</h3>
+          <div class="stats-feature-meta">${Math.round(topShow.secs / 3600)}h ${Math.round((topShow.secs % 3600) / 60)}m watched</div>
+        </div>
+      </div>
+    </div>` : ""}
+    <div class="stats-section">
+      <h2>Your Ratings</h2>
+      <div class="ratings-summary">
+        <div class="rating-pill"><span>👍</span> ${Object.values(ratingsMap).filter(r => r === "up").length} liked</div>
+        <div class="rating-pill"><span>❤️</span> ${Object.values(ratingsMap).filter(r => r === "love").length} loved</div>
+        <div class="rating-pill"><span>👎</span> ${Object.values(ratingsMap).filter(r => r === "down").length} disliked</div>
+      </div>
+    </div>`;
+
+  // Wire feature card
+  const featCard = $(".stats-feature-card");
+  if (featCard) {
+    featCard.addEventListener("click", () => {
+      navTo(`#/title/${featCard.dataset.type}/${featCard.dataset.id}`);
+    });
+  }
+}
+
+// ============ YEAR RECAP ============
+function showYearRecap() {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  const year = new Date().getFullYear();
+  const yearStart = new Date(year, 0, 1).getTime();
+  const yearEntries = Object.entries(progressMap).filter(([, v]) => v.title && (v.updatedAt || 0) >= yearStart);
+  const yearEpisodes = Object.values(progressMap).filter(v => v.isEpisode && (v.updatedAt || 0) >= yearStart);
+  const yearSeconds = yearEntries.reduce((a, [, v]) => a + (v.timestamp || 0), 0)
+    + yearEpisodes.reduce((a, v) => a + (v.timestamp || 0), 0);
+  const yearHours = Math.round(yearSeconds / 3600);
+  const yearFinished = yearEntries.filter(([, v]) => v.progress >= 95).length;
+  const yearMovies = yearEntries.filter(([, v]) => v.itemType === "movie").length;
+  const yearShows = yearEntries.filter(([, v]) => v.itemType === "tv").length;
+  const yearAnime = yearEntries.filter(([, v]) => v.itemType === "anime").length;
+  const allEpsFinished = yearEpisodes.filter(v => v.progress >= 95).length;
+
+  // Top title by accumulated time this year
+  const accBy = {};
+  yearEntries.forEach(([k, v]) => { accBy[k] = { item: v, secs: v.timestamp || 0 }; });
+  yearEpisodes.forEach(v => {
+    const showKey = `${v.itemType || "tv"}:${v.itemId || ""}`;
+    if (accBy[showKey]) accBy[showKey].secs += v.timestamp || 0;
+  });
+  const topTitle = Object.values(accBy).sort((a, b) => b.secs - a.secs)[0];
+
+  rows.innerHTML = `
+    <div class="recap-screen">
+      <div class="recap-card">
+        <div class="recap-eyebrow">Your ${year} in MovieBox</div>
+        <div class="recap-hero-num">${yearHours}</div>
+        <div class="recap-hero-label">hours of watching</div>
+        <div class="recap-divider"></div>
+        <div class="recap-stats-grid">
+          <div><div class="rs-num">${yearFinished}</div><div class="rs-label">titles finished</div></div>
+          <div><div class="rs-num">${allEpsFinished}</div><div class="rs-label">episodes watched</div></div>
+          <div><div class="rs-num">${yearMovies}</div><div class="rs-label">movies</div></div>
+          <div><div class="rs-num">${yearShows + yearAnime}</div><div class="rs-label">shows</div></div>
+        </div>
+        ${topTitle ? `
+          <div class="recap-divider"></div>
+          <div class="recap-top">
+            <div class="recap-top-eyebrow">Your most-watched of ${year}</div>
+            <div class="recap-top-card" data-id="${topTitle.item.itemId}" data-type="${topTitle.item.itemType}">
+              <div class="recap-top-bg" style="background-image:url('${topTitle.item.backdrop || topTitle.item.backdropMd || topTitle.item.poster || ""}')"></div>
+              <div class="recap-top-fade"></div>
+              <div class="recap-top-info">
+                <h3>${escapeHTML(topTitle.item.title)}</h3>
+                <div>${Math.round(topTitle.secs / 3600)}h ${Math.round((topTitle.secs % 3600) / 60)}m watched</div>
+              </div>
+            </div>
+          </div>` : ""}
+        <div class="recap-actions">
+          <a href="#/stats" class="btn">View Full Stats</a>
+          <a href="#/" class="btn-secondary">Back Home</a>
+        </div>
+      </div>
+    </div>`;
+  const t = $(".recap-top-card");
+  if (t) t.addEventListener("click", () => navTo(`#/title/${t.dataset.type}/${t.dataset.id}`));
 }
 
 function humanWhen(ts) {
@@ -1071,6 +1325,94 @@ let modalMuted = true;
 let currentSeason = null;
 let modalDetails = null;
 
+function renderRatingButtons(item) {
+  const buttonsRow = $(".modal-hero-buttons");
+  if (!buttonsRow) return;
+  // Remove any existing rating UI
+  buttonsRow.querySelectorAll(".rating-btn").forEach(n => n.remove());
+  const cur = getRating(item);
+  const opts = [
+    { val: "down", icon: "👎", title: "Not for me" },
+    { val: "up", icon: "👍", title: "I like this" },
+    { val: "love", icon: "❤️", title: "Love this!" },
+  ];
+  opts.forEach(o => {
+    const b = document.createElement("button");
+    b.className = "icon-btn rating-btn" + (cur === o.val ? " rated" : "");
+    b.title = o.title;
+    b.textContent = o.icon;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setRating(item, o.val);
+      renderRatingButtons(item);
+      const verb = ratingsMap[`${item.type}:${item.id}`] === o.val
+        ? (o.val === "love" ? "Loved" : o.val === "up" ? "Liked" : "Marked as not for me")
+        : "Rating cleared";
+      showToast(verb);
+    });
+    buttonsRow.appendChild(b);
+  });
+}
+
+function renderSeasonProgressIfApplicable(item) {
+  const container = $(".modal-info-main");
+  if (!container) return;
+  container.querySelectorAll(".season-progress-bars").forEach(n => n.remove());
+  if (item.type !== "tv") return;
+  // Async fetch seasons, count episodes vs watched per-episode entries
+  setTimeout(async () => {
+    try {
+      const details = modalDetails || (await tmdb(`/tv/${item.id}`));
+      if (currentItem !== item) return;
+      const seasons = (details.seasons || []).filter(s => s.season_number > 0 && s.episode_count > 0);
+      if (!seasons.length) return;
+      const wrap = document.createElement("div");
+      wrap.className = "season-progress-bars";
+      wrap.innerHTML = `<div class="season-progress-title">Your progress</div>`;
+      seasons.forEach(s => {
+        let watched = 0;
+        for (let e = 1; e <= s.episode_count; e++) {
+          const ep = progressMap[episodeProgressKey(item, s.season_number, e)];
+          if (ep && ep.progress >= 95) watched++;
+        }
+        const pct = Math.round((watched / s.episode_count) * 100);
+        const isDone = watched === s.episode_count;
+        const row = document.createElement("div");
+        row.className = "season-progress-row" + (isDone ? " done" : "");
+        row.innerHTML = `
+          <span class="sp-label">S${s.season_number}</span>
+          <div class="sp-bar"><div style="width:${pct}%"></div></div>
+          <span class="sp-count">${watched}/${s.episode_count}${isDone ? " ✓" : ""}</span>`;
+        wrap.appendChild(row);
+      });
+      container.appendChild(wrap);
+    } catch {}
+  }, 0);
+}
+
+function renderNewEpisodeBadge(item) {
+  const titleEl = $("#modal-title");
+  document.querySelectorAll(".new-episode-badge").forEach(n => n.remove());
+  if (item.type !== "tv") return;
+  const last = progressMap[progressKey(item)];
+  if (!last) return;
+  setTimeout(async () => {
+    try {
+      const details = modalDetails || (await tmdb(`/tv/${item.id}`));
+      if (currentItem !== item) return;
+      const lastAir = details.last_air_date ? new Date(details.last_air_date).getTime() : 0;
+      // Show "New Episode" badge if airdate is after last watched and within 30 days
+      if (lastAir && last.updatedAt && lastAir > last.updatedAt && (Date.now() - lastAir) < 30 * 86400000) {
+        const badge = document.createElement("div");
+        badge.className = "new-episode-badge";
+        badge.textContent = "● NEW EPISODE";
+        const meta = $(".modal-meta");
+        if (meta) meta.parentNode.insertBefore(badge, meta);
+      }
+    } catch {}
+  }, 0);
+}
+
 async function openModal(item, opts = {}) {
   currentItem = item;
   modalDetails = null;
@@ -1109,6 +1451,9 @@ async function openModal(item, opts = {}) {
   $("#cast-section").classList.add("hidden"); $("#cast-row").innerHTML = "";
   $("#similar-grid").innerHTML = "";
   updateListButton();
+  renderRatingButtons(item);
+  renderSeasonProgressIfApplicable(item);
+  renderNewEpisodeBadge(item);
 
   // Trailer in modal hero
   try {
@@ -1316,6 +1661,11 @@ function computeNextEpisode(item, ctx) {
       return {
         item, ctx: { season: ctx.season, episode: ep.episode_number },
         label: `S${ctx.season} E${ep.episode_number}${ep.name ? " · " + ep.name : ""}`,
+        epName: ep.name || `Episode ${ep.episode_number}`,
+        epOverview: ep.overview || "",
+        epThumb: ep.still_path ? `${IMG}/w300${ep.still_path}` : (item.backdrop || ""),
+        epRuntime: ep.runtime,
+        seasonEp: `S${ctx.season} · E${ep.episode_number}`,
       };
     }
     // Try next season (use modalDetails.seasons)
@@ -1324,17 +1674,58 @@ function computeNextEpisode(item, ctx) {
       if (next) return {
         item, ctx: { season: next.season_number, episode: 1 },
         label: `S${next.season_number} E1 · Season Premiere`,
+        epName: "Season Premiere",
+        epOverview: "Start of a new season",
+        epThumb: item.backdrop || "",
+        seasonEp: `S${next.season_number} · E1`,
         nextSeason: true,
       };
     }
   }
   if (item.type === "anime" && !item.isMovie && item.episodes && ctx.episode < item.episodes) {
-    return { item, ctx: { episode: ctx.episode + 1 }, label: `Episode ${ctx.episode + 1}` };
+    return {
+      item, ctx: { episode: ctx.episode + 1 },
+      label: `Episode ${ctx.episode + 1}`,
+      epName: `Episode ${ctx.episode + 1}`,
+      epOverview: "",
+      epThumb: item.poster || item.backdrop || "",
+      seasonEp: `Ep ${ctx.episode + 1}`,
+    };
   }
   return null;
 }
 
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
+  // Smart resume: if user pressed main Play (no ctx) on TV/anime and last episode was finished, jump to next
+  const last = progressMap[progressKey(item)];
+  if ((item.type === "tv" || item.type === "anime") && !ctx.episode && last) {
+    if (last.progress >= 95) {
+      // Find next episode after last watched (s/e+1)
+      if (item.type === "anime") {
+        const next = (last.episode || 0) + 1;
+        if (item.episodes && next <= item.episodes) ctx = { episode: next };
+        else ctx = { episode: 1 }; // wrap to start
+      } else {
+        // TV: try same season +1, fallback to s+1 e1
+        ctx = { season: last.season || 1, episode: (last.episode || 0) + 1 };
+      }
+      seekOffsetSec = 0; // start fresh
+    } else if (last.season && last.episode) {
+      // Resume same episode
+      ctx = { season: last.season, episode: last.episode };
+    }
+  }
+  // Smart resume: if user is <30s in, restart from 0
+  const epLast = (item.type === "tv" || item.type === "anime") && ctx.episode
+    ? progressMap[episodeProgressKey(item, ctx.season || 1, ctx.episode)]
+    : last;
+  if (epLast && epLast.timestamp && epLast.timestamp < 30 && seekOffsetSec == null) {
+    seekOffsetSec = 0;
+  }
+  // Smart resume: movie finished -> restart
+  if (item.type === "movie" && last?.progress >= 95 && seekOffsetSec == null) {
+    seekOffsetSec = 0;
+  }
   const url = buildPlayerURL(item, ctx, seekOffsetSec);
   $("#modal-trailer").innerHTML = "";
   $(".modal-body").classList.add("playing");
@@ -1377,17 +1768,25 @@ function showUpNext() {
   if (upNextShown || !nextEpContext) return;
   upNextShown = true;
   let count = 10;
+  const ne = nextEpContext;
   const overlay = document.createElement("div");
-  overlay.className = "player-overlay-upnext";
+  overlay.className = "player-overlay-upnext rich";
   overlay.innerHTML = `
-    <div class="upnext-label">Up Next</div>
-    <div class="upnext-title">${escapeHTML(nextEpContext.label)}</div>
-    <div class="upnext-countdown">Playing in <span class="upnext-count">${count}</span>s
-      <span class="upnext-progress"><div style="width:0%"></div></span>
-    </div>
-    <div class="upnext-buttons">
-      <button class="upnext-play">▶ Play Now</button>
-      <button class="upnext-cancel">Cancel</button>
+    <div class="upnext-rich">
+      ${ne.epThumb ? `<div class="upnext-thumb" style="background-image:url('${ne.epThumb}')"></div>` : ""}
+      <div class="upnext-text">
+        <div class="upnext-label">Up Next${ne.nextSeason ? " · NEW SEASON" : ""}</div>
+        <div class="upnext-title">${escapeHTML(ne.epName || ne.label)}</div>
+        <div class="upnext-sub">${escapeHTML(ne.seasonEp || "")}${ne.epRuntime ? ` · ${ne.epRuntime}m` : ""}</div>
+        ${ne.epOverview ? `<div class="upnext-overview">${escapeHTML(ne.epOverview).slice(0, 180)}${ne.epOverview.length > 180 ? "…" : ""}</div>` : ""}
+        <div class="upnext-countdown">Playing in <span class="upnext-count">${count}</span>s
+          <span class="upnext-progress"><div style="width:0%"></div></span>
+        </div>
+        <div class="upnext-buttons">
+          <button class="upnext-play">▶ Play Now</button>
+          <button class="upnext-cancel">Cancel</button>
+        </div>
+      </div>
     </div>`;
   $("#player-wrap").appendChild(overlay);
 
@@ -1421,8 +1820,16 @@ function showUpNext() {
 let lastTimestamp = 0;
 
 function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
-  const last = progressMap[progressKey(item)];
-  const seek = overrideSeek != null ? Math.floor(overrideSeek) : (last?.timestamp ? Math.floor(last.timestamp) : null);
+  // Per-episode seek if applicable, else show-level
+  let last;
+  if ((item.type === "tv" || item.type === "anime") && ctx.episode) {
+    last = progressMap[episodeProgressKey(item, ctx.season || 1, ctx.episode)] || progressMap[progressKey(item)];
+  } else {
+    last = progressMap[progressKey(item)];
+  }
+  let seek = overrideSeek != null ? Math.floor(overrideSeek) : (last?.timestamp ? Math.floor(last.timestamp) : null);
+  // Don't seek if at the very end (would cause auto-finish loop)
+  if (seek != null && last?.duration && seek > last.duration - 30) seek = null;
 
   // Provider-specific URL builders
   const provider = PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER;
@@ -1633,8 +2040,14 @@ async function getRecommendedForYou() {
 
 function getContinueWatching() {
   return Object.entries(progressMap)
-    .filter(([, v]) => !v.isEpisode && v.progress > 1 && v.progress < 95)
-    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
+    .filter(([k, v]) => !v.isEpisode && v.progress > 1 && v.progress < 95 && !dismissedMap[k])
+    .sort((a, b) => {
+      // Sort by "almost finished" first (>75%), then by recency
+      const aAlmost = a[1].progress > 75;
+      const bAlmost = b[1].progress > 75;
+      if (aAlmost !== bAlmost) return bAlmost - aAlmost;
+      return (b[1].updatedAt || 0) - (a[1].updatedAt || 0);
+    })
     .slice(0, 20)
     .map(([, v]) => ({
       id: v.itemId, type: v.itemType, title: v.title,
@@ -1692,6 +2105,9 @@ async function route() {
   else if (parts[0] === "anime") p = showCategory("anime");
   else if (parts[0] === "new") p = showNewPopular();
   else if (parts[0] === "list") { showMyList(); p = Promise.resolve(); }
+  else if (parts[0] === "stats") { p = showStats(); }
+  else if (parts[0] === "history") { showHistory(); p = Promise.resolve(); }
+  else if (parts[0] === "recap") { showYearRecap(); p = Promise.resolve(); }
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
