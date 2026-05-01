@@ -70,6 +70,11 @@ const STORAGE = {
   sessions: "moviebox:sessions",     // [{ start, end }] for time-of-day
   goal: "moviebox:goal",             // monthly hours goal { hours, month }
   region: "moviebox:region",         // user country preference
+  privacy: "moviebox:privacy",       // { pauseProgress, pauseSession, pauseHistory }
+  achievements: "moviebox:ach",      // { id: unlockedAt }
+  affinityActors: "moviebox:actors", // { actorId: { name, count, profile_path, lastSeen } }
+  affinityDirectors: "moviebox:directors",
+  status: "moviebox:status",         // explicit status overrides { itemKey: "dropped" | "plan" }
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
@@ -88,6 +93,11 @@ let currentSession = null;       // { start, itemKey } for active playback
 let bedtimeOn = false;
 let multiSelectMode = false;
 let selectedListIds = new Set();
+let privacy = { pauseProgress: false, pauseSession: false, pauseHistory: false };
+let achievements = {};
+let affinityActors = {};
+let affinityDirectors = {};
+let statusOverrides = {};
 let activeProfile = loadJSON(STORAGE.profile, null);
 PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
 if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
@@ -108,6 +118,11 @@ function loadProfileData() {
   sessionsList = loadJSON(profileStorageKey(STORAGE.sessions), []);
   monthlyGoal = loadJSON(profileStorageKey(STORAGE.goal), null);
   userRegion = localStorage.getItem(STORAGE.region) || "US";
+  privacy = loadJSON(profileStorageKey(STORAGE.privacy), { pauseProgress: false, pauseSession: false, pauseHistory: false });
+  achievements = loadJSON(profileStorageKey(STORAGE.achievements), {});
+  affinityActors = loadJSON(profileStorageKey(STORAGE.affinityActors), {});
+  affinityDirectors = loadJSON(profileStorageKey(STORAGE.affinityDirectors), {});
+  statusOverrides = loadJSON(profileStorageKey(STORAGE.status), {});
   // Auto-cleanup: dismiss items not touched in 30+ days
   const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
   for (const [k, v] of Object.entries(progressMap)) {
@@ -143,6 +158,170 @@ function saveJournal() { saveJSON(profileStorageKey(STORAGE.journal), journalMap
 function saveRewatch() { saveJSON(profileStorageKey(STORAGE.rewatch), rewatchMap); }
 function saveSessions() { saveJSON(profileStorageKey(STORAGE.sessions), sessionsList); }
 function saveGoal() { saveJSON(profileStorageKey(STORAGE.goal), monthlyGoal); }
+function savePrivacy() { saveJSON(profileStorageKey(STORAGE.privacy), privacy); }
+function saveAchievements() { saveJSON(profileStorageKey(STORAGE.achievements), achievements); }
+function saveAffinityActors() { saveJSON(profileStorageKey(STORAGE.affinityActors), affinityActors); }
+function saveAffinityDirectors() { saveJSON(profileStorageKey(STORAGE.affinityDirectors), affinityDirectors); }
+function saveStatusOverrides() { saveJSON(profileStorageKey(STORAGE.status), statusOverrides); }
+
+// ===== Smart status engine =====
+// Returns: "completed" | "watching" | "rewatching" | "dropped" | "plan" | "none"
+function computeStatus(item) {
+  const k = itemKey(item);
+  // Manual override wins
+  if (statusOverrides[k]) return statusOverrides[k];
+  const v = progressMap[k];
+  const inList = myList.some(m => itemKey(m) === k);
+  const rwCount = rewatchMap[k] || 0;
+  if (!v || !v.progress) return inList ? "plan" : "none";
+  if (v.progress >= 95) {
+    if (rwCount >= 2 && (Date.now() - (v.updatedAt || 0)) < 30 * 86400000) return "rewatching";
+    return "completed";
+  }
+  // In progress
+  const daysSince = (Date.now() - (v.updatedAt || 0)) / 86400000;
+  if (daysSince > 14 && v.progress < 60) return "dropped";
+  return "watching";
+}
+function setStatusOverride(item, status) {
+  const k = itemKey(item);
+  if (!status || status === "none") delete statusOverrides[k];
+  else statusOverrides[k] = status;
+  saveStatusOverrides();
+}
+
+// ===== Achievements catalog =====
+const ACHIEVEMENTS = [
+  { id: "h100",   icon: "⏱",  title: "Century Club",       desc: "100 hours watched",            check: (s) => s.totalHours >= 100 },
+  { id: "h500",   icon: "🎬", title: "Cinephile",          desc: "500 hours watched",            check: (s) => s.totalHours >= 500 },
+  { id: "h1000",  icon: "👑", title: "Master Watcher",     desc: "1000 hours watched",           check: (s) => s.totalHours >= 1000 },
+  { id: "fin5",   icon: "✓",  title: "Finisher",           desc: "5 titles finished",            check: (s) => s.finished >= 5 },
+  { id: "fin25",  icon: "🏆", title: "Closer",             desc: "25 titles finished",           check: (s) => s.finished >= 25 },
+  { id: "fin100", icon: "🎖", title: "Marathon",           desc: "100 titles finished",          check: (s) => s.finished >= 100 },
+  { id: "ser5",   icon: "📺", title: "Series Veteran",     desc: "5 series finished",            check: (s) => s.finishedShows >= 5 },
+  { id: "ser20",  icon: "📚", title: "Showrunner",         desc: "20 series finished",           check: (s) => s.finishedShows >= 20 },
+  { id: "mov50",  icon: "🎥", title: "Movie Buff",         desc: "50 movies watched",            check: (s) => s.finishedMovies >= 50 },
+  { id: "ep100",  icon: "🍿", title: "Episode Eater",      desc: "100 episodes watched",         check: (s) => s.totalEpisodes >= 100 },
+  { id: "ep500",  icon: "🥇", title: "Episode Champion",   desc: "500 episodes watched",         check: (s) => s.totalEpisodes >= 500 },
+  { id: "str7",   icon: "🔥", title: "Week Streak",        desc: "Watched 7 days in a row",      check: (s) => s.streak >= 7 },
+  { id: "str30",  icon: "🌋", title: "Month Streak",       desc: "Watched 30 days in a row",     check: (s) => s.streak >= 30 },
+  { id: "rw1",    icon: "↻",  title: "First Rewatch",      desc: "Rewatched a title",            check: (s) => s.rewatches >= 1 },
+  { id: "rw10",   icon: "♾",  title: "Comfort Watcher",    desc: "Rewatched 10 titles",          check: (s) => s.rewatches >= 10 },
+  { id: "gen5",   icon: "🎭", title: "Genre Explorer",     desc: "Watched 5 different genres",   check: (s) => s.genreCount >= 5 },
+  { id: "gen10",  icon: "🌈", title: "Genre Connoisseur",  desc: "Watched 10 different genres",  check: (s) => s.genreCount >= 10 },
+  { id: "rate10", icon: "⭐", title: "Critic",             desc: "Rated 10 titles",              check: (s) => s.ratingsCount >= 10 },
+  { id: "rate50", icon: "📝", title: "Reviewer",           desc: "Rated 50 titles",              check: (s) => s.ratingsCount >= 50 },
+  { id: "tag5",   icon: "🏷", title: "Organizer",          desc: "Used 5 different tags",        check: (s) => s.tagCount >= 5 },
+  { id: "anime5", icon: "🎌", title: "Otaku",              desc: "Finished 5 anime",             check: (s) => s.finishedAnime >= 5 },
+  { id: "binge",  icon: "💥", title: "Binge Master",       desc: "4+ episodes in one session",   check: (s) => s.maxBinge >= 4 },
+  { id: "night",  icon: "🌙", title: "Night Owl",          desc: "10 late-night sessions",       check: (s) => s.nightSessions >= 10 },
+  { id: "morn",   icon: "☀️", title: "Early Bird",         desc: "10 morning sessions",          check: (s) => s.morningSessions >= 10 },
+];
+
+function computeAchievementStats() {
+  const entries = Object.entries(progressMap).filter(([, v]) => v.title);
+  const eps = Object.values(progressMap).filter(v => v.isEpisode);
+  const totalSecs = entries.reduce((a, [, v]) => a + (v.timestamp || 0), 0)
+                  + eps.reduce((a, v) => a + (v.timestamp || 0), 0);
+  const finished = entries.filter(([, v]) => v.progress >= 95).length;
+  const finishedMovies = entries.filter(([, v]) => v.itemType === "movie" && v.progress >= 95).length;
+  const finishedShows = entries.filter(([, v]) => v.itemType === "tv" && v.progress >= 95).length;
+  const finishedAnime = entries.filter(([, v]) => v.itemType === "anime" && v.progress >= 95).length;
+  const totalEpisodes = eps.filter(v => v.progress >= 95).length;
+  const rewatches = Object.keys(rewatchMap).filter(k => rewatchMap[k] >= 2).length;
+  // Streak
+  const dayKey = (ts) => { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime(); };
+  const dayBucket = new Set(Object.values(progressMap).map(v => v.updatedAt).filter(Boolean).map(dayKey));
+  let streak = 0; let cur = new Date(); cur.setHours(0,0,0,0);
+  if (!dayBucket.has(cur.getTime())) cur.setDate(cur.getDate() - 1);
+  while (dayBucket.has(cur.getTime())) { streak++; cur.setDate(cur.getDate() - 1); }
+  // Genres count
+  const genres = new Set();
+  entries.forEach(([, v]) => { if (v.itemType === "anime") genres.add("Anime"); });
+  // For movie/tv genres we'd need TMDB call - approximate from cached
+  // Use ratings count + tags count
+  return {
+    totalHours: totalSecs / 3600,
+    finished, finishedMovies, finishedShows, finishedAnime,
+    totalEpisodes, rewatches, streak,
+    genreCount: genres.size + Math.min(8, Math.round(entries.length / 5)), // rough
+    ratingsCount: Object.keys(ratingsMap).length,
+    tagCount: new Set(Object.values(tagsMap).flat()).size,
+    maxBinge: computeMaxBinge(),
+    nightSessions: sessionsList.filter(s => { const h = new Date(s.start).getHours(); return h >= 22 || h < 5; }).length,
+    morningSessions: sessionsList.filter(s => { const h = new Date(s.start).getHours(); return h >= 5 && h < 11; }).length,
+  };
+}
+
+function computeMaxBinge() {
+  // Count consecutive episode plays of same show within 4 hours
+  if (!sessionsList.length) return 0;
+  const sorted = [...sessionsList].sort((a, b) => a.start - b.start);
+  let max = 1, cur = 1, lastKey = null, lastEnd = 0;
+  for (const s of sorted) {
+    if (s.itemKey === lastKey && s.start - lastEnd < 4 * 3600000) {
+      cur++; if (cur > max) max = cur;
+    } else { cur = 1; }
+    lastKey = s.itemKey; lastEnd = s.end || s.start;
+  }
+  return max;
+}
+
+function checkAchievements() {
+  const stats = computeAchievementStats();
+  const newly = [];
+  ACHIEVEMENTS.forEach(a => {
+    if (!achievements[a.id] && a.check(stats)) {
+      achievements[a.id] = Date.now();
+      newly.push(a);
+    }
+  });
+  if (newly.length) {
+    saveAchievements();
+    newly.forEach((a, i) => setTimeout(() => showAchievementToast(a), i * 1500));
+  }
+}
+
+function showAchievementToast(a) {
+  const t = document.createElement("div");
+  t.className = "achievement-toast";
+  t.innerHTML = `
+    <div class="ach-icon">${a.icon}</div>
+    <div class="ach-text">
+      <div class="ach-eyebrow">Achievement Unlocked</div>
+      <div class="ach-title">${escapeHTML(a.title)}</div>
+      <div class="ach-desc">${escapeHTML(a.desc)}</div>
+    </div>`;
+  document.body.appendChild(t);
+  // Sparkles
+  setTimeout(() => sparkleAt(t), 200);
+  setTimeout(() => { t.classList.add("fade-out"); setTimeout(() => t.remove(), 400); }, 5000);
+}
+
+// ===== Actor/Director affinity =====
+async function trackAffinityForItem(item) {
+  if (privacy.pauseProgress) return;
+  if (item.type === "anime") return;
+  try {
+    const credits = await tmdb(`/${item.type}/${item.id}/credits`).catch(() => null);
+    if (!credits) return;
+    // Top 3 cast
+    (credits.cast || []).slice(0, 3).forEach(c => {
+      affinityActors[c.id] = affinityActors[c.id] || { name: c.name, count: 0, profile_path: c.profile_path };
+      affinityActors[c.id].count++;
+      affinityActors[c.id].lastSeen = Date.now();
+    });
+    // Director(s)
+    const directors = (credits.crew || []).filter(c => c.job === "Director" || c.department === "Directing");
+    directors.slice(0, 2).forEach(d => {
+      affinityDirectors[d.id] = affinityDirectors[d.id] || { name: d.name, count: 0, profile_path: d.profile_path };
+      affinityDirectors[d.id].count++;
+      affinityDirectors[d.id].lastSeen = Date.now();
+    });
+    saveAffinityActors();
+    saveAffinityDirectors();
+  } catch {}
+}
 function itemKey(item) { return `${item.type}:${item.id}`; }
 function getTags(item) { return tagsMap[itemKey(item)] || []; }
 function setTags(item, tags) {
@@ -1274,6 +1453,270 @@ function renderBudgetGauge() {
   document.body.appendChild(fab);
 }
 
+// ============== LIBRARY (smart status tabs) ==============
+function showLibrary(tab) {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  // Bucket every known item by computed status
+  const buckets = { watching: [], completed: [], plan: [], dropped: [], rewatching: [] };
+  const seen = new Set();
+  // From progressMap
+  Object.entries(progressMap).filter(([, v]) => v.title).forEach(([k, v]) => {
+    seen.add(k);
+    const item = { id: v.itemId, type: v.itemType, title: v.title, poster: v.poster, backdrop: v.backdrop, backdropMd: v.backdropMd, year: v.year, rating: v.rating, isMovie: v.isMovie, episodes: v.episodes };
+    const status = computeStatus(item);
+    if (buckets[status]) buckets[status].push({ item, v });
+  });
+  // From myList that aren't in progress
+  myList.forEach(item => {
+    const k = itemKey(item);
+    if (seen.has(k)) return;
+    const status = computeStatus(item);
+    if (buckets[status]) buckets[status].push({ item, v: null });
+  });
+
+  const counts = Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, v.length]));
+  const tabs = [
+    { id: "watching",   icon: "▶",  label: "Currently Watching", count: counts.watching },
+    { id: "rewatching", icon: "↻",  label: "Rewatching",         count: counts.rewatching },
+    { id: "plan",       icon: "📌", label: "Plan to Watch",       count: counts.plan },
+    { id: "completed",  icon: "✓",  label: "Completed",           count: counts.completed },
+    { id: "dropped",    icon: "✕",  label: "Dropped",             count: counts.dropped },
+  ];
+  rows.innerHTML = `<div class="page-header"><h1>Your Library</h1>
+    <div class="page-header-actions">
+      <a href="#/achievements" class="page-action-btn">🏆 Achievements</a>
+      <a href="#/stats" class="page-action-btn">📊 Stats</a>
+      <a href="#/privacy" class="page-action-btn">🔒 Privacy</a>
+    </div></div>
+    <div class="library-tabs">
+      ${tabs.map(t => `<a href="#/library/${t.id}" class="lib-tab${t.id === tab ? " active" : ""}">
+        <span class="lib-tab-icon">${t.icon}</span>
+        <span class="lib-tab-label">${t.label}</span>
+        <span class="lib-tab-count">${t.count}</span>
+      </a>`).join("")}
+    </div>`;
+  const list = buckets[tab] || [];
+  if (!list.length) {
+    const emptyMsg = {
+      watching:   { icon: "▶",  msg: "Nothing in progress. Start a movie or show to see it here." },
+      rewatching: { icon: "↻",  msg: "No rewatches yet. Restart a finished title to track it." },
+      plan:       { icon: "📌", msg: "Your plan-to-watch list is empty. Add titles via My List." },
+      completed:  { icon: "✓",  msg: "No completed titles yet. Finish something to see it here." },
+      dropped:    { icon: "✕",  msg: "Nothing dropped. Titles abandoned for 14+ days appear here." },
+    }[tab] || { icon: "?", msg: "Empty." };
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">${emptyMsg.icon}</div><h2>Nothing here</h2><p>${escapeHTML(emptyMsg.msg)}</p></div>`;
+    return;
+  }
+  // Sort by recency
+  list.sort((a, b) => (b.v?.updatedAt || 0) - (a.v?.updatedAt || 0));
+  const grid = document.createElement("div");
+  grid.className = "search-grid";
+  list.forEach(({ item, v }) => {
+    const cell = document.createElement("div");
+    cell.className = "search-cell library-cell";
+    cell.appendChild(makeCard(item, { showProgress: tab === "watching" }));
+    const meta = document.createElement("div");
+    meta.className = "search-meta";
+    let label = item.type === "tv" ? "Series" : item.type === "anime" ? "Anime" : "Movie";
+    if (v?.season && v?.episode) label += ` · S${v.season}E${v.episode}`;
+    meta.innerHTML = `<span class="type-pill">${label}</span><span>${item.year || ""}</span>`;
+    const title = document.createElement("div");
+    title.className = "search-title";
+    title.textContent = item.title;
+    cell.appendChild(title); cell.appendChild(meta);
+    // Quick actions row
+    const actions = document.createElement("div");
+    actions.className = "lib-actions";
+    if (tab === "watching") {
+      actions.innerHTML = `<button class="lib-act drop">Mark Dropped</button><button class="lib-act done">Mark Done</button>`;
+      actions.querySelector(".drop").addEventListener("click", (e) => { e.stopPropagation(); setStatusOverride(item, "dropped"); showLibrary(tab); showToast("Marked as dropped"); });
+      actions.querySelector(".done").addEventListener("click", (e) => { e.stopPropagation(); markFinished(item); showLibrary(tab); });
+    } else if (tab === "dropped") {
+      actions.innerHTML = `<button class="lib-act resume">Resume</button><button class="lib-act remove">Remove</button>`;
+      actions.querySelector(".resume").addEventListener("click", (e) => { e.stopPropagation(); setStatusOverride(item, null); navTo(`#/title/${item.type}/${item.id}`); });
+      actions.querySelector(".remove").addEventListener("click", (e) => { e.stopPropagation(); delete progressMap[itemKey(item)]; saveProgress(); showLibrary(tab); });
+    } else if (tab === "plan") {
+      actions.innerHTML = `<button class="lib-act resume">Watch Now</button><button class="lib-act remove">Remove</button>`;
+      actions.querySelector(".resume").addEventListener("click", (e) => { e.stopPropagation(); navTo(`#/title/${item.type}/${item.id}`); });
+      actions.querySelector(".remove").addEventListener("click", (e) => { e.stopPropagation(); myList = myList.filter(m => itemKey(m) !== itemKey(item)); saveMyList(); showLibrary(tab); });
+    } else if (tab === "completed") {
+      actions.innerHTML = `<button class="lib-act resume">Rewatch</button><button class="lib-act unmark">Unmark</button>`;
+      actions.querySelector(".resume").addEventListener("click", (e) => { e.stopPropagation(); navTo(`#/title/${item.type}/${item.id}`); });
+      actions.querySelector(".unmark").addEventListener("click", (e) => { e.stopPropagation();
+        if (progressMap[itemKey(item)]) { progressMap[itemKey(item)].progress = 50; saveProgress(); }
+        showLibrary(tab);
+      });
+    } else if (tab === "rewatching") {
+      actions.innerHTML = `<button class="lib-act resume">Continue</button>`;
+      actions.querySelector(".resume").addEventListener("click", (e) => { e.stopPropagation(); navTo(`#/title/${item.type}/${item.id}`); });
+    }
+    cell.appendChild(actions);
+    grid.appendChild(cell);
+  });
+  rows.appendChild(grid);
+}
+
+function markFinished(item) {
+  const k = itemKey(item);
+  if (!progressMap[k]) {
+    progressMap[k] = {
+      itemId: item.id, itemType: item.type, title: item.title,
+      poster: item.poster, backdrop: item.backdrop, backdropMd: item.backdropMd,
+      year: item.year, rating: item.rating,
+    };
+  }
+  progressMap[k].progress = 100;
+  progressMap[k].timestamp = progressMap[k].duration || 0;
+  progressMap[k].updatedAt = Date.now();
+  saveProgress();
+  setStatusOverride(item, null);
+  showToast("Marked complete");
+  checkAchievements();
+}
+
+// ============== ACHIEVEMENTS PAGE ==============
+function showAchievements() {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  const stats = computeAchievementStats();
+  const unlocked = ACHIEVEMENTS.filter(a => achievements[a.id]);
+  const locked = ACHIEVEMENTS.filter(a => !achievements[a.id]);
+  rows.innerHTML = `<div class="page-header"><h1>Achievements</h1>
+    <div class="page-header-actions"><a href="#/library/watching" class="page-action-btn">← Library</a></div></div>
+    <div class="ach-summary">
+      <div class="ach-summary-num">${unlocked.length}<span>/${ACHIEVEMENTS.length}</span></div>
+      <div class="ach-summary-label">unlocked</div>
+      <div class="ach-summary-bar"><div style="width:${(unlocked.length / ACHIEVEMENTS.length) * 100}%"></div></div>
+    </div>`;
+  const grid = document.createElement("div");
+  grid.className = "ach-grid";
+  // Unlocked first
+  [...unlocked, ...locked].forEach(a => {
+    const card = document.createElement("div");
+    const isLocked = !achievements[a.id];
+    card.className = "ach-card" + (isLocked ? " locked" : "");
+    const unlockedDate = achievements[a.id] ? humanWhen(achievements[a.id]) : "";
+    card.innerHTML = `
+      <div class="ach-card-icon">${isLocked ? "🔒" : a.icon}</div>
+      <div class="ach-card-title">${escapeHTML(a.title)}</div>
+      <div class="ach-card-desc">${escapeHTML(a.desc)}</div>
+      ${isLocked ? "" : `<div class="ach-card-date">Unlocked ${unlockedDate}</div>`}`;
+    grid.appendChild(card);
+  });
+  rows.appendChild(grid);
+}
+
+// ============== PRIVACY PAGE ==============
+function showPrivacy() {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `<div class="page-header"><h1>Privacy & Data</h1>
+    <div class="page-header-actions"><a href="#/library/watching" class="page-action-btn">← Library</a></div></div>
+    <div class="privacy-section">
+      <h2>Tracking Controls</h2>
+      <p class="privacy-help">Pause any tracker. Past data is preserved; new data won't be recorded while paused.</p>
+      <div class="privacy-toggle">
+        <div>
+          <div class="pt-title">📊 Progress tracking</div>
+          <div class="pt-desc">Save where you left off in titles you watch</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="t-progress" ${!privacy.pauseProgress ? "checked" : ""}/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-toggle">
+        <div>
+          <div class="pt-title">⏱ Session tracking</div>
+          <div class="pt-desc">Record viewing sessions for time-of-day insights</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="t-session" ${!privacy.pauseSession ? "checked" : ""}/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-toggle">
+        <div>
+          <div class="pt-title">📜 History entries</div>
+          <div class="pt-desc">Add new titles to your watch history</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="t-history" ${!privacy.pauseHistory ? "checked" : ""}/><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+    <div class="privacy-section">
+      <h2>Edit History</h2>
+      <p class="privacy-help">Remove individual titles or fully forget them (clears progress + tags + journal + ratings).</p>
+      <div id="privacy-history-list" class="privacy-history"></div>
+    </div>
+    <div class="privacy-section">
+      <h2>Bulk Actions</h2>
+      <div class="privacy-bulk">
+        <button class="btn-secondary" id="p-export">📥 Export All Data</button>
+        <button class="btn-secondary" id="p-wipe-history">Clear History Only</button>
+        <button class="btn-secondary danger" id="p-wipe-all">⚠ Wipe Everything</button>
+      </div>
+    </div>`;
+  // Wire toggles
+  $("#t-progress").addEventListener("change", (e) => { privacy.pauseProgress = !e.target.checked; savePrivacy(); showToast(privacy.pauseProgress ? "Progress tracking paused" : "Progress tracking on"); });
+  $("#t-session").addEventListener("change", (e) => { privacy.pauseSession = !e.target.checked; savePrivacy(); showToast(privacy.pauseSession ? "Session tracking paused" : "Session tracking on"); });
+  $("#t-history").addEventListener("change", (e) => { privacy.pauseHistory = !e.target.checked; savePrivacy(); showToast(privacy.pauseHistory ? "History paused" : "History on"); });
+  // Render history list (top 30)
+  const historyList = $("#privacy-history-list");
+  const entries = Object.entries(progressMap).filter(([, v]) => v.title)
+    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0)).slice(0, 30);
+  if (!entries.length) {
+    historyList.innerHTML = `<div class="empty">No history to edit.</div>`;
+  } else {
+    entries.forEach(([k, v]) => {
+      const row = document.createElement("div");
+      row.className = "privacy-row";
+      row.innerHTML = `
+        <div class="pr-thumb" style="background-image:url('${v.poster || v.backdropMd || ""}')"></div>
+        <div class="pr-info">
+          <div class="pr-title">${escapeHTML(v.title)}</div>
+          <div class="pr-sub">${Math.round(v.progress || 0)}% · ${humanWhen(v.updatedAt || 0)}</div>
+        </div>
+        <button class="pr-btn">Remove</button>
+        <button class="pr-btn danger">Forget</button>`;
+      const [removeBtn, forgetBtn] = row.querySelectorAll(".pr-btn");
+      removeBtn.addEventListener("click", () => {
+        delete progressMap[k]; saveProgress(); row.remove();
+      });
+      forgetBtn.addEventListener("click", () => {
+        if (!confirm(`Forget "${v.title}" entirely? Removes progress, tags, journal, rating.`)) return;
+        delete progressMap[k];
+        delete tagsMap[k]; delete journalMap[k]; delete ratingsMap[k]; delete rewatchMap[k];
+        delete dismissedMap[k]; delete hiddenMap[k]; delete statusOverrides[k];
+        // Also delete per-episode entries
+        Object.keys(progressMap).forEach(ek => { if (ek.startsWith(k + ":")) delete progressMap[ek]; });
+        saveProgress(); saveTags(); saveJournal(); saveRatings(); saveRewatch(); saveDismissed(); saveHidden(); saveStatusOverrides();
+        row.remove();
+        showToast("Forgotten");
+      });
+      historyList.appendChild(row);
+    });
+  }
+  // Bulk
+  $("#p-export").addEventListener("click", exportJSON);
+  $("#p-wipe-history").addEventListener("click", () => {
+    if (!confirm("Clear all watch history? My List, ratings, tags will stay.")) return;
+    progressMap = {}; rewatchMap = {}; sessionsList = [];
+    saveProgress(); saveRewatch(); saveSessions();
+    showToast("History cleared");
+    showPrivacy();
+  });
+  $("#p-wipe-all").addEventListener("click", () => {
+    if (!confirm("⚠ WIPE EVERYTHING for this profile? Cannot be undone.")) return;
+    if (!confirm("Really sure? All progress, lists, ratings, tags, journal, achievements gone.")) return;
+    [STORAGE.progress, STORAGE.list, STORAGE.ratings, STORAGE.dismissed, STORAGE.hidden, STORAGE.tags, STORAGE.journal, STORAGE.rewatch, STORAGE.sessions, STORAGE.goal, STORAGE.achievements, STORAGE.affinityActors, STORAGE.affinityDirectors, STORAGE.status]
+      .forEach(k => localStorage.removeItem(profileStorageKey(k)));
+    loadProfileData();
+    showToast("All data wiped");
+    navTo("#/");
+  });
+}
+
 // ============== STATS PAGE ==============
 async function showStats() {
   setActive("history");
@@ -1282,8 +1725,10 @@ async function showStats() {
   const rows = $("#rows");
   rows.innerHTML = `<div class="page-header"><h1>Your Stats</h1>
     <div class="page-header-actions">
+      <a href="#/library/watching" class="page-action-btn">📚 Library</a>
+      <a href="#/achievements" class="page-action-btn">🏆 Achievements</a>
       <a href="#/recap" class="page-action-btn">✨ ${new Date().getFullYear()} Recap</a>
-      <a href="#/history" class="page-action-btn">← Back to History</a>
+      <a href="#/privacy" class="page-action-btn">🔒 Privacy</a>
     </div></div>`;
 
   const entries = Object.entries(progressMap).filter(([, v]) => v.title);
@@ -1469,6 +1914,51 @@ async function showStats() {
     rows.appendChild(todSection);
   }
 
+  // ===== Behavior insights (binge / abandon / drop-off) =====
+  const insights = computeBehaviorInsights();
+  if (insights.length) {
+    const bSec = document.createElement("div");
+    bSec.className = "stats-section";
+    bSec.innerHTML = `<h2>Your Habits</h2><div class="behavior-grid">
+      ${insights.map(i => `<div class="behavior-card">
+        <div class="bh-icon">${i.icon}</div>
+        <div class="bh-text">
+          <div class="bh-headline">${escapeHTML(i.headline)}</div>
+          <div class="bh-sub">${escapeHTML(i.sub)}</div>
+        </div>
+      </div>`).join("")}
+    </div>`;
+    rows.appendChild(bSec);
+  }
+
+  // ===== Top actors / directors =====
+  const topActors = Object.entries(affinityActors).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+  const topDirectors = Object.entries(affinityDirectors).sort((a, b) => b[1].count - a[1].count).slice(0, 5);
+  if (topActors.length) {
+    const aSec = document.createElement("div");
+    aSec.className = "stats-section";
+    aSec.innerHTML = `<h2>Your Top Actors</h2><div class="affinity-grid">
+      ${topActors.map(([id, a]) => `<a href="#/person/${id}" class="affinity-card">
+        <div class="af-photo" style="background-image:url('${a.profile_path ? IMG + "/w185" + a.profile_path : ""}')"></div>
+        <div class="af-name">${escapeHTML(a.name)}</div>
+        <div class="af-count">${a.count} title${a.count > 1 ? "s" : ""}</div>
+      </a>`).join("")}
+    </div>`;
+    rows.appendChild(aSec);
+  }
+  if (topDirectors.length) {
+    const dSec = document.createElement("div");
+    dSec.className = "stats-section";
+    dSec.innerHTML = `<h2>Your Top Directors</h2><div class="affinity-grid">
+      ${topDirectors.map(([id, d]) => `<a href="#/person/${id}" class="affinity-card">
+        <div class="af-photo" style="background-image:url('${d.profile_path ? IMG + "/w185" + d.profile_path : ""}')"></div>
+        <div class="af-name">${escapeHTML(d.name)}</div>
+        <div class="af-count">${d.count} title${d.count > 1 ? "s" : ""}</div>
+      </a>`).join("")}
+    </div>`;
+    rows.appendChild(dSec);
+  }
+
   // ===== Goal setter + Export buttons =====
   const goalSection = document.createElement("div");
   goalSection.className = "stats-section";
@@ -1608,6 +2098,60 @@ function computeTimeOfDayInsight() {
   let extraSub = "";
   if (weekend > weekday * 0.4) extraSub = " You're also a weekend binger.";
   return { headline: labels[idx], sub: subs[idx] + extraSub, icon: icons[idx] };
+}
+
+function computeBehaviorInsights() {
+  const insights = [];
+  // Binge detection
+  const maxBinge = computeMaxBinge();
+  if (maxBinge >= 3) insights.push({
+    icon: "💥", headline: `${maxBinge} episodes in one binge`,
+    sub: maxBinge >= 5 ? "You're a serious binge-watcher." : "You like a good back-to-back run.",
+  });
+  // Abandon count
+  const dropped = Object.entries(progressMap).filter(([, v]) => {
+    if (!v.title || v.isEpisode) return false;
+    const days = (Date.now() - (v.updatedAt || 0)) / 86400000;
+    return days > 14 && v.progress > 1 && v.progress < 60;
+  }).length;
+  if (dropped > 0) insights.push({
+    icon: "📭", headline: `${dropped} title${dropped > 1 ? "s" : ""} waiting`,
+    sub: `Started but untouched for 2+ weeks. Pick one back up?`,
+  });
+  // Drop-off pattern (TV shows: avg episode where dropped)
+  const tvDropped = Object.values(progressMap).filter(v => v.isEpisode === undefined && v.itemType === "tv" && v.episode && v.progress < 60 && (Date.now() - (v.updatedAt || 0)) > 14 * 86400000);
+  if (tvDropped.length >= 3) {
+    const avgEp = Math.round(tvDropped.reduce((a, v) => a + (v.episode || 1), 0) / tvDropped.length);
+    insights.push({
+      icon: "📉", headline: `Drops shows around episode ${avgEp}`,
+      sub: "If you make it past this point, you usually finish.",
+    });
+  }
+  // Completion rate by type
+  const movieEntries = Object.values(progressMap).filter(v => v.itemType === "movie" && v.title);
+  const movieFinish = movieEntries.length ? Math.round(movieEntries.filter(v => v.progress >= 95).length / movieEntries.length * 100) : 0;
+  const tvEntries = Object.values(progressMap).filter(v => v.itemType === "tv" && v.title);
+  const tvFinish = tvEntries.length ? Math.round(tvEntries.filter(v => v.progress >= 95).length / tvEntries.length * 100) : 0;
+  if (movieEntries.length >= 3 && tvEntries.length >= 3 && Math.abs(movieFinish - tvFinish) > 15) {
+    insights.push({
+      icon: movieFinish > tvFinish ? "🎬" : "📺",
+      headline: movieFinish > tvFinish ? "You finish movies more than shows" : "You finish shows more than movies",
+      sub: `${movieFinish}% movies vs ${tvFinish}% shows completion rate.`,
+    });
+  }
+  // Weekend binger
+  const weekendSecs = sessionsList.filter(s => { const d = new Date(s.start).getDay(); return d === 0 || d === 6; })
+    .reduce((a, s) => a + ((s.end || s.start) - s.start) / 1000, 0);
+  const weekdaySecs = sessionsList.filter(s => { const d = new Date(s.start).getDay(); return d > 0 && d < 6; })
+    .reduce((a, s) => a + ((s.end || s.start) - s.start) / 1000, 0);
+  if (weekendSecs > weekdaySecs * 0.6 && (weekendSecs + weekdaySecs) > 7200) {
+    insights.push({
+      icon: "🎉", headline: "Weekend binger",
+      sub: `Most of your watching happens Saturday/Sunday.`,
+    });
+  }
+  // Most-watched genre call-out (rough)
+  return insights;
 }
 
 function exportCSV() {
@@ -2457,8 +3001,14 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
     rewatchMap[itemKey(item)] = (rewatchMap[itemKey(item)] || 1) + 1;
     saveRewatch();
   }
-  // Start session
-  currentSession = { start: Date.now(), itemKey: itemKey(item) };
+  // Start session (unless paused by privacy)
+  if (!privacy.pauseSession) {
+    currentSession = { start: Date.now(), itemKey: itemKey(item) };
+  }
+  // Track affinity in background
+  trackAffinityForItem(item);
+  // Check achievements after a brief delay
+  setTimeout(checkAchievements, 1500);
   if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null; }
   removeSkipIntro(); removeUpNext();
   nextEpContext = computeNextEpisode(item, ctx);
@@ -2699,6 +3249,7 @@ window.addEventListener("message", (event) => {
   if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
   if (!data || typeof data !== "object" || data.id == null || !data.type) return;
   if (!currentItem) return;
+  if (privacy.pauseProgress) return;  // privacy: skip progress saves
   progressMap[progressKey(currentItem)] = {
     progress: data.progress, timestamp: data.timestamp, duration: data.duration,
     season: data.season, episode: data.episode, updatedAt: Date.now(),
@@ -2842,6 +3393,9 @@ async function route() {
   else if (parts[0] === "mood" && parts[1]) { p = showMood(parts[1]); }
   else if (parts[0] === "hidden") { showHiddenTitles(); p = Promise.resolve(); }
   else if (parts[0] === "tag" && parts[1]) { p = showByTag(decodeURIComponent(parts[1])); }
+  else if (parts[0] === "library") { showLibrary(parts[1] || "watching"); p = Promise.resolve(); }
+  else if (parts[0] === "achievements") { showAchievements(); p = Promise.resolve(); }
+  else if (parts[0] === "privacy") { showPrivacy(); p = Promise.resolve(); }
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
