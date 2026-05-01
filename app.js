@@ -60,16 +60,34 @@ const STORAGE = {
   list: "moviebox:mylist",
   profile: "moviebox:profile",
   onboarded: "moviebox:onboarded",
-  ratings: "moviebox:ratings",      // thumbs up/down per title
-  dismissed: "moviebox:dismissed",  // dismissed Continue Watching items
-  recapShown: "moviebox:recap",     // year recap shown flag
+  ratings: "moviebox:ratings",
+  dismissed: "moviebox:dismissed",
+  recapShown: "moviebox:recap",
+  hidden: "moviebox:hidden",         // "not interested" titles
+  tags: "moviebox:tags",             // { "movie:550": ["favorite", "rewatch"] }
+  journal: "moviebox:journal",       // { "movie:550": "best twist ever" }
+  rewatch: "moviebox:rewatch",       // { "movie:550": 2 }
+  sessions: "moviebox:sessions",     // [{ start, end }] for time-of-day
+  goal: "moviebox:goal",             // monthly hours goal { hours, month }
+  region: "moviebox:region",         // user country preference
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 let progressMap = {};
 let myList = [];
-let ratingsMap = {};      // { "movie:550": "up" | "down" | "love" }
-let dismissedMap = {};    // { "movie:550": true }
+let ratingsMap = {};
+let dismissedMap = {};
+let hiddenMap = {};
+let tagsMap = {};
+let journalMap = {};
+let rewatchMap = {};
+let sessionsList = [];
+let monthlyGoal = null;
+let userRegion = "US";
+let currentSession = null;       // { start, itemKey } for active playback
+let bedtimeOn = false;
+let multiSelectMode = false;
+let selectedListIds = new Set();
 let activeProfile = loadJSON(STORAGE.profile, null);
 PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
 if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
@@ -83,6 +101,13 @@ function loadProfileData() {
   myList = loadJSON(profileStorageKey(STORAGE.list), []);
   ratingsMap = loadJSON(profileStorageKey(STORAGE.ratings), {});
   dismissedMap = loadJSON(profileStorageKey(STORAGE.dismissed), {});
+  hiddenMap = loadJSON(profileStorageKey(STORAGE.hidden), {});
+  tagsMap = loadJSON(profileStorageKey(STORAGE.tags), {});
+  journalMap = loadJSON(profileStorageKey(STORAGE.journal), {});
+  rewatchMap = loadJSON(profileStorageKey(STORAGE.rewatch), {});
+  sessionsList = loadJSON(profileStorageKey(STORAGE.sessions), []);
+  monthlyGoal = loadJSON(profileStorageKey(STORAGE.goal), null);
+  userRegion = localStorage.getItem(STORAGE.region) || "US";
   // Auto-cleanup: dismiss items not touched in 30+ days
   const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
   for (const [k, v] of Object.entries(progressMap)) {
@@ -112,6 +137,36 @@ function saveProgress() { saveJSON(profileStorageKey(STORAGE.progress), progress
 function saveMyList() { saveJSON(profileStorageKey(STORAGE.list), myList); }
 function saveRatings() { saveJSON(profileStorageKey(STORAGE.ratings), ratingsMap); }
 function saveDismissed() { saveJSON(profileStorageKey(STORAGE.dismissed), dismissedMap); }
+function saveHidden() { saveJSON(profileStorageKey(STORAGE.hidden), hiddenMap); }
+function saveTags() { saveJSON(profileStorageKey(STORAGE.tags), tagsMap); }
+function saveJournal() { saveJSON(profileStorageKey(STORAGE.journal), journalMap); }
+function saveRewatch() { saveJSON(profileStorageKey(STORAGE.rewatch), rewatchMap); }
+function saveSessions() { saveJSON(profileStorageKey(STORAGE.sessions), sessionsList); }
+function saveGoal() { saveJSON(profileStorageKey(STORAGE.goal), monthlyGoal); }
+function itemKey(item) { return `${item.type}:${item.id}`; }
+function getTags(item) { return tagsMap[itemKey(item)] || []; }
+function setTags(item, tags) {
+  if (!tags || !tags.length) delete tagsMap[itemKey(item)];
+  else tagsMap[itemKey(item)] = tags;
+  saveTags();
+}
+function getJournal(item) { return journalMap[itemKey(item)] || ""; }
+function setJournal(item, text) {
+  if (!text) delete journalMap[itemKey(item)];
+  else journalMap[itemKey(item)] = text;
+  saveJournal();
+}
+function isHidden(item) { return !!hiddenMap[itemKey(item)]; }
+function hideItem(item) { hiddenMap[itemKey(item)] = true; saveHidden(); }
+function unhideItem(item) { delete hiddenMap[itemKey(item)]; saveHidden(); }
+
+// ===== Bedtime mode (auto after 11pm or manual) =====
+function checkBedtime() {
+  const h = new Date().getHours();
+  const auto = (h >= 23 || h < 5);
+  document.body.classList.toggle("bedtime", bedtimeOn || auto);
+}
+setInterval(checkBedtime, 60000);
 function getRating(item) { return ratingsMap[`${item.type}:${item.id}`] || null; }
 function setRating(item, rating) {
   const k = `${item.type}:${item.id}`;
@@ -337,8 +392,10 @@ function makeCard(item, opts = {}) {
   if (bg) { card.dataset.bg = bg; lazyImageObserver.observe(card); }
   const key = progressKey(item);
   const p = progressMap[key];
-  let progressBar = "", cwMeta = "", watchedBadge = "";
+  let progressBar = "", cwMeta = "", watchedBadge = "", rewatchBadge = "";
   if (p && p.progress >= 95) watchedBadge = `<div class="watched-badge">Watched</div>`;
+  const rwCount = rewatchMap[itemKey(item)] || 0;
+  if (rwCount >= 2) rewatchBadge = `<div class="rewatch-badge">↻ ${rwCount}×</div>`;
   // Always show a thin progress bar if there's any progress (Netflix style)
   if (p?.progress && p.progress > 1 && p.progress < 95) {
     progressBar = `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>`;
@@ -376,6 +433,7 @@ function makeCard(item, opts = {}) {
   }
   card.innerHTML = `
     ${watchedBadge}
+    ${rewatchBadge}
     ${dismissBtn}
     ${progressRing}
     ${cwMeta}
@@ -404,6 +462,18 @@ function makeCard(item, opts = {}) {
       setTimeout(() => card.remove(), 220);
     });
   }
+  // Right-click "Not interested"
+  card.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (confirm(`Hide "${item.title}" from your home rows?`)) {
+      hideItem(item);
+      card.style.transition = "opacity 200ms, transform 200ms";
+      card.style.opacity = "0";
+      card.style.transform = "scale(0.85)";
+      setTimeout(() => card.remove(), 220);
+      showToast("🙈 Hidden");
+    }
+  });
   card.addEventListener("click", () => openModal(item));
   card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openTitle(item); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
@@ -453,7 +523,11 @@ function makeTop10Card(item, rank) {
 function renderRow(title, items, opts = {}) {
   const row = document.createElement("section");
   row.className = "row" + (opts.top10 ? " top10" : "");
-  row.innerHTML = `<h2>${escapeHTML(title)}</h2><div class="row-wrap"></div>`;
+  // Filter out hidden items unless explicitly showing all
+  if (items && !opts.showHidden) {
+    items = items.filter(it => it && !isHidden(it));
+  }
+  row.innerHTML = `<h2>${escapeHTML(title)}${opts.subtitle ? ` <span class="row-subtitle">${escapeHTML(opts.subtitle)}</span>` : ""}</h2><div class="row-wrap"></div>`;
   const wrap = $(".row-wrap", row);
   if (!items || items.length === 0) {
     wrap.innerHTML = `<div class="empty">Nothing here yet.</div>`;
@@ -463,7 +537,17 @@ function renderRow(title, items, opts = {}) {
   scroll.className = "row-scroll";
   items.forEach((it, i) => {
     if (!it) return;
-    if (opts.top10) scroll.appendChild(makeTop10Card(it, i + 1));
+    if (opts.top10) {
+      const card = makeTop10Card(it, i + 1);
+      // Add #1 trending badge
+      if (i === 0 && opts.top10Badge) {
+        const badge = document.createElement("div");
+        badge.className = "top10-badge";
+        badge.textContent = `#1 ${opts.top10Badge}`;
+        card.appendChild(badge);
+      }
+      scroll.appendChild(card);
+    }
     else if (it.poster || it.backdrop) scroll.appendChild(makeCard(it, opts));
   });
   wrap.appendChild(scroll);
@@ -601,13 +685,15 @@ async function showHome() {
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 4; i++) rows.appendChild(skeletonRow());
   try {
-    const [trending, popMovies, popTV, topMovies, anime, trendingDay] = await Promise.all([
+    const regionParam = { region: userRegion };
+    const [trending, popMovies, popTV, topMovies, anime, trendingDay, trendingRegion] = await Promise.all([
       tmdb("/trending/all/week"),
-      tmdb("/movie/popular"),
+      tmdb("/movie/popular", regionParam),
       tmdb("/tv/popular"),
       tmdb("/movie/top_rated"),
       anilistTrending().catch(() => []),
       tmdb("/trending/all/day"),
+      tmdb("/movie/popular", regionParam).catch(() => null),
     ]);
     const trendingItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r));
     const heroPick = trendingItems.find(t => t.backdrop && t.overview) || trendingItems[0];
@@ -619,31 +705,130 @@ async function showHome() {
     if (continueItems.length) rows.appendChild(renderRow("Continue Watching", continueItems, { showProgress: true }));
     if (myList.length) rows.appendChild(renderRow("My List", myList));
 
-    // Recommended for You (lazy after main content)
-    getRecommendedForYou().then(recs => {
-      if (recs.length) {
-        const row = renderRow("Recommended for You", recs);
-        // Insert near the top, just after Continue Watching / My List if present, else first
-        const ref = rows.querySelector(".row:nth-child(2)") || rows.querySelector(".row");
-        if (ref) rows.insertBefore(row, ref); else rows.appendChild(row);
-      }
+    // Daily pick (deterministic by date)
+    const dailyItems = trendingItems.filter(it => !isHidden(it) && (parseFloat(it.rating) || 0) >= 7);
+    if (dailyItems.length) {
+      const seed = new Date().toISOString().slice(0, 10).split("-").reduce((a, b) => a + parseInt(b), 0);
+      const pick = dailyItems[seed % dailyItems.length];
+      const dailyRow = renderRow(`Today's Pick for ${escapeHTML(activeProfile?.name || "You")}`, [pick], { showProgress: false, subtitle: "🎬 Hand-picked daily" });
+      rows.appendChild(dailyRow);
+    }
+
+    // Mood filter chips
+    const moodChips = document.createElement("div");
+    moodChips.className = "mood-chips";
+    moodChips.innerHTML = `
+      <span class="mood-label">Mood:</span>
+      <button class="mood-chip" data-mood="quick">⚡ Quick (<90min)</button>
+      <button class="mood-chip" data-mood="binge">🍿 Long Binge</button>
+      <button class="mood-chip" data-mood="light">😊 Light</button>
+      <button class="mood-chip" data-mood="heavy">🎭 Heavy Drama</button>
+      <button class="mood-chip" data-mood="mind">🧠 Mind-Bending</button>
+      <button class="mood-chip surprise" id="surprise-chip">🎲 Surprise Me</button>`;
+    rows.appendChild(moodChips);
+    moodChips.querySelectorAll(".mood-chip[data-mood]").forEach(chip => {
+      chip.addEventListener("click", () => filterByMood(chip.dataset.mood));
+    });
+    $("#surprise-chip").addEventListener("click", surpriseMe);
+
+    // Recommended for You with named "Because you watched X" rows
+    getNamedRecommendations().then(namedRows => {
+      namedRows.forEach(({ label, items, subtitle }) => {
+        if (!items.length) return;
+        const r = renderRow(label, items, { subtitle });
+        // Insert after Daily Pick / mood chips
+        const insertAfter = rows.querySelector(".mood-chips");
+        if (insertAfter) insertAfter.after(r);
+        else rows.appendChild(r);
+      });
     }).catch(() => {});
 
     rows.appendChild(renderRow("Trending Now", trendingItems));
-    rows.appendChild(renderRow(`Top 10 Today`, trendingDay.results.slice(0, 10).map(r => normalizeTMDB(r)), { top10: true }));
+    rows.appendChild(renderRow(
+      `Top 10 in ${userRegion} Today`,
+      trendingDay.results.slice(0, 10).map(r => normalizeTMDB(r)),
+      { top10: true, top10Badge: `in ${userRegion}` }
+    ));
     rows.appendChild(renderRow("Popular Movies", popMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     rows.appendChild(renderRow("Popular TV Shows", popTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
     rows.appendChild(renderRow("Trending Anime", anime));
     rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
+
+    // Hidden Gems row (high rating, low vote count)
+    try {
+      const gems = await tmdb("/discover/movie", { sort_by: "vote_average.desc", "vote_count.gte": 200, "vote_count.lte": 1500, "vote_average.gte": 7.5 });
+      const gemItems = gems.results.filter(r => r.backdrop_path && r.poster_path).slice(0, 18).map(r => ({ ...normalizeTMDB(r, "movie"), isGem: true }));
+      if (gemItems.length) rows.appendChild(renderRow("💎 Hidden Gems", gemItems, { subtitle: "Underrated picks worth watching" }));
+    } catch {}
 
     // Genre rows (lazy after main content)
     for (const g of GENRES_MOVIE.slice(0, 5)) {
       const data = await tmdb("/discover/movie", { with_genres: g.id, sort_by: "popularity.desc" });
       rows.appendChild(renderRow(g.name, data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     }
+
+    // Floating budget gauge if goal set
+    renderBudgetGauge();
   } catch (e) {
     rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
   }
+}
+
+// ===== Mood filters =====
+const MOOD_GENRES = {
+  quick: { with_runtime_lte: 90 },
+  binge: { with_runtime_gte: 130 },
+  light: { with_genres: "35,10751,16" },     // comedy + family + animation
+  heavy: { with_genres: "18,53,9648" },      // drama + thriller + mystery
+  mind:  { with_genres: "878,9648,53" },     // sci-fi + mystery + thriller
+};
+async function filterByMood(mood) {
+  const params = MOOD_GENRES[mood];
+  if (!params) return;
+  navTo("#/mood/" + mood);
+}
+
+// ===== Surprise Me =====
+async function surpriseMe() {
+  try {
+    const page = Math.floor(Math.random() * 5) + 1;
+    const data = await tmdb("/discover/movie", { sort_by: "popularity.desc", "vote_count.gte": 500, page });
+    const candidates = data.results.filter(r => r.backdrop_path && r.poster_path);
+    if (!candidates.length) return;
+    const pick = normalizeTMDB(candidates[Math.floor(Math.random() * candidates.length)], "movie");
+    showToast(`🎲 Surprise: ${pick.title}`);
+    navTo(`#/title/movie/${pick.id}`);
+  } catch (e) { showToast("Couldn't pick a surprise — try again"); }
+}
+
+// ===== "Because you watched X" - named recommendation rows =====
+async function getNamedRecommendations() {
+  // Get top 2 most-recent watched/finished show + 1 from My List as seeds
+  const seeds = [];
+  const seenSeed = new Set();
+  const cw = getContinueWatching().slice(0, 2);
+  cw.forEach(it => {
+    const k = itemKey(it);
+    if (!seenSeed.has(k) && it.type !== "anime") { seenSeed.add(k); seeds.push(it); }
+  });
+  // Add one from My List
+  const fromList = myList.find(it => !seenSeed.has(itemKey(it)) && it.type !== "anime");
+  if (fromList) { seenSeed.add(itemKey(fromList)); seeds.push(fromList); }
+  if (!seeds.length) return [];
+
+  const out = [];
+  for (const s of seeds.slice(0, 3)) {
+    try {
+      const data = await tmdb(`/${s.type}/${s.id}/recommendations`);
+      const items = data.results.filter(r => r.backdrop_path && r.poster_path && !seenSeed.has(`${s.type}:${r.id}`))
+        .slice(0, 18).map(r => normalizeTMDB(r, s.type));
+      if (items.length) out.push({
+        label: `Because you watched ${s.title}`,
+        items,
+      });
+    } catch {}
+  }
+  return out;
 }
 
 let currentCategoryType = null;
@@ -963,6 +1148,132 @@ function renderHistoryGroup(grid, entries) {
   });
 }
 
+// ============== MOOD PAGE ==============
+async function showMood(mood) {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  const labels = {
+    quick: { icon: "⚡", title: "Quick Watch", subtitle: "Movies under 90 minutes" },
+    binge: { icon: "🍿", title: "Long Binge", subtitle: "Settle in for a long one (130min+)" },
+    light: { icon: "😊", title: "Something Light", subtitle: "Comedy, family, animation" },
+    heavy: { icon: "🎭", title: "Heavy Drama", subtitle: "Drama, thriller, mystery" },
+    mind:  { icon: "🧠", title: "Mind-Bending", subtitle: "Sci-fi, mystery, thriller" },
+  };
+  const info = labels[mood] || labels.quick;
+  rows.innerHTML = `<div class="page-header"><h1>${info.icon} ${escapeHTML(info.title)}</h1>
+    <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>
+    <p class="page-subhead-text">${escapeHTML(info.subtitle)}</p>`;
+  try {
+    const params = { ...MOOD_GENRES[mood], sort_by: "popularity.desc", "vote_count.gte": 200 };
+    const data = await tmdb("/discover/movie", params);
+    const items = data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"));
+    const grid = document.createElement("div");
+    grid.className = "search-grid";
+    items.forEach(it => {
+      const cell = document.createElement("div"); cell.className = "search-cell";
+      cell.appendChild(makeCard(it));
+      const meta = document.createElement("div"); meta.className = "search-meta";
+      meta.innerHTML = `<span class="type-pill">Movie</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
+      const title = document.createElement("div"); title.className = "search-title";
+      title.textContent = it.title;
+      cell.appendChild(title); cell.appendChild(meta);
+      grid.appendChild(cell);
+    });
+    rows.appendChild(grid);
+  } catch (e) { rows.innerHTML += `<div class="empty">${escapeHTML(e.message)}</div>`; }
+}
+
+// ============== HIDDEN TITLES PAGE ==============
+function showHiddenTitles() {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `<div class="page-header"><h1>Hidden Titles</h1>
+    <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>`;
+  const keys = Object.keys(hiddenMap);
+  if (!keys.length) {
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">🙈</div><h2>Nothing hidden</h2><p>Use "Not interested" on cards to hide titles from your home rows.</p></div>`;
+    return;
+  }
+  const grid = document.createElement("div");
+  grid.className = "search-grid";
+  keys.forEach(k => {
+    const [type, id] = k.split(":");
+    const v = progressMap[k];
+    const item = v ? { id: +id, type, title: v.title, poster: v.poster, backdrop: v.backdrop, backdropMd: v.backdropMd, year: v.year, rating: v.rating } : { id: +id, type, title: "(Hidden title)" };
+    const cell = document.createElement("div"); cell.className = "search-cell";
+    cell.appendChild(makeCard(item, { showHidden: true }));
+    const title = document.createElement("div"); title.className = "search-title";
+    title.textContent = item.title;
+    const unhideBtn = document.createElement("button");
+    unhideBtn.className = "btn-secondary"; unhideBtn.textContent = "Unhide";
+    unhideBtn.style.marginTop = "8px"; unhideBtn.style.fontSize = "12px"; unhideBtn.style.padding = "4px 12px";
+    unhideBtn.addEventListener("click", () => { unhideItem(item); showHiddenTitles(); });
+    cell.appendChild(title); cell.appendChild(unhideBtn);
+    grid.appendChild(cell);
+  });
+  rows.appendChild(grid);
+}
+
+// ============== TAG PAGE ==============
+async function showByTag(tag) {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `<div class="page-header"><h1>🏷 ${escapeHTML(tag)}</h1>
+    <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>`;
+  const keys = Object.keys(tagsMap).filter(k => (tagsMap[k] || []).includes(tag));
+  if (!keys.length) {
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">🏷</div><h2>No titles tagged "${escapeHTML(tag)}"</h2></div>`;
+    return;
+  }
+  const grid = document.createElement("div");
+  grid.className = "search-grid";
+  keys.forEach(k => {
+    const [type, id] = k.split(":");
+    const v = progressMap[k] || myList.find(m => itemKey(m) === k);
+    if (!v) return;
+    const item = v.title ? { id: v.itemId || v.id || +id, type: v.itemType || type, title: v.title, poster: v.poster, backdrop: v.backdrop, backdropMd: v.backdropMd, year: v.year, rating: v.rating } : v;
+    const cell = document.createElement("div"); cell.className = "search-cell";
+    cell.appendChild(makeCard(item));
+    const title = document.createElement("div"); title.className = "search-title";
+    title.textContent = item.title;
+    cell.appendChild(title);
+    grid.appendChild(cell);
+  });
+  rows.appendChild(grid);
+}
+
+// ============== BUDGET GAUGE ==============
+function renderBudgetGauge() {
+  document.querySelectorAll(".budget-gauge-fab").forEach(n => n.remove());
+  if (!monthlyGoal) return;
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const secs = Object.values(progressMap).filter(v => (v.updatedAt || 0) >= monthStart.getTime()).reduce((a, v) => a + (v.timestamp || 0), 0);
+  const hours = secs / 3600;
+  const pct = Math.min(100, Math.round((hours / monthlyGoal.hours) * 100));
+  const fab = document.createElement("div");
+  fab.className = "budget-gauge-fab";
+  fab.innerHTML = `
+    <div class="bg-ring">
+      <svg viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="26" class="bg-ring-bg"/>
+        <circle cx="30" cy="30" r="26" class="bg-ring-fg" style="stroke-dasharray:${2*Math.PI*26};stroke-dashoffset:${(2*Math.PI*26) - ((pct/100)*(2*Math.PI*26))}"/>
+      </svg>
+      <div class="bg-pct">${pct}%</div>
+    </div>
+    <div class="bg-text">
+      <div class="bg-num">${hours.toFixed(1)}h / ${monthlyGoal.hours}h</div>
+      <div class="bg-label">${pct >= 100 ? "🎉 Goal reached!" : "this month"}</div>
+    </div>`;
+  fab.addEventListener("click", () => navTo("#/stats"));
+  document.body.appendChild(fab);
+}
+
 // ============== STATS PAGE ==============
 async function showStats() {
   setActive("history");
@@ -1068,6 +1379,277 @@ async function showStats() {
       navTo(`#/title/${featCard.dataset.type}/${featCard.dataset.id}`);
     });
   }
+
+  // ===== Compare to last month =====
+  const lastMonthStart = new Date(); lastMonthStart.setMonth(lastMonthStart.getMonth() - 1); lastMonthStart.setDate(1); lastMonthStart.setHours(0,0,0,0);
+  const lastMonthEnd = new Date(monthStart);
+  const lastMonthSecs = entries.filter(([, v]) => (v.updatedAt || 0) >= lastMonthStart.getTime() && (v.updatedAt || 0) < lastMonthEnd.getTime())
+    .reduce((a, [, v]) => a + (v.timestamp || 0), 0) +
+    Object.values(progressMap).filter(v => v.isEpisode && (v.updatedAt || 0) >= lastMonthStart.getTime() && (v.updatedAt || 0) < lastMonthEnd.getTime())
+    .reduce((a, v) => a + (v.timestamp || 0), 0);
+  const lastMonthHours = Math.round(lastMonthSecs / 3600);
+  const diffPct = lastMonthHours ? Math.round(((monthHours - lastMonthHours) / lastMonthHours) * 100) : 0;
+  const diffArrow = monthHours > lastMonthHours ? "↑" : monthHours < lastMonthHours ? "↓" : "→";
+  const diffColor = monthHours > lastMonthHours ? "up" : monthHours < lastMonthHours ? "down" : "flat";
+  const compareSection = document.createElement("div");
+  compareSection.className = "stats-section";
+  compareSection.innerHTML = `
+    <h2>This Month vs. Last Month</h2>
+    <div class="compare-grid">
+      <div class="compare-cell">
+        <div class="compare-num">${lastMonthHours}h</div>
+        <div class="compare-label">Last month</div>
+      </div>
+      <div class="compare-arrow ${diffColor}">${diffArrow}</div>
+      <div class="compare-cell">
+        <div class="compare-num">${monthHours}h</div>
+        <div class="compare-label">This month</div>
+      </div>
+      <div class="compare-pct ${diffColor}">${diffPct >= 0 ? "+" : ""}${diffPct}%</div>
+    </div>`;
+  rows.appendChild(compareSection);
+
+  // ===== Genre breakdown pie =====
+  const genreSecs = await computeGenreBreakdown(entries);
+  if (genreSecs.length) {
+    const genreSection = document.createElement("div");
+    genreSection.className = "stats-section";
+    const total = genreSecs.reduce((a, [, s]) => a + s, 0);
+    const colors = ["#e50914", "#0080ff", "#f5c518", "#46d369", "#9333ea", "#ec4899", "#06b6d4", "#f97316"];
+    let cumulative = 0;
+    const segs = genreSecs.slice(0, 8).map(([name, secs], i) => {
+      const pct = (secs / total) * 100;
+      const start = cumulative;
+      cumulative += pct;
+      const startA = (start / 100) * 360 - 90;
+      const endA = (cumulative / 100) * 360 - 90;
+      const large = pct > 50 ? 1 : 0;
+      const r = 80, cx = 100, cy = 100;
+      const x1 = cx + r * Math.cos(startA * Math.PI / 180);
+      const y1 = cy + r * Math.sin(startA * Math.PI / 180);
+      const x2 = cx + r * Math.cos(endA * Math.PI / 180);
+      const y2 = cy + r * Math.sin(endA * Math.PI / 180);
+      return { name, pct: Math.round(pct), color: colors[i % colors.length], path: `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} Z` };
+    });
+    genreSection.innerHTML = `
+      <h2>Genre Breakdown</h2>
+      <div class="genre-pie-wrap">
+        <svg class="genre-pie" viewBox="0 0 200 200">
+          ${segs.map(s => `<path d="${s.path}" fill="${s.color}"/>`).join("")}
+          <circle cx="100" cy="100" r="42" fill="#0a0a0a"/>
+          <text x="100" y="95" text-anchor="middle" fill="#fff" font-size="20" font-weight="800">${segs.length}</text>
+          <text x="100" y="115" text-anchor="middle" fill="#999" font-size="11">genres</text>
+        </svg>
+        <div class="genre-legend">
+          ${segs.map(s => `<div class="genre-legend-row"><span class="genre-dot" style="background:${s.color}"></span><span class="genre-name">${escapeHTML(s.name)}</span><span class="genre-pct">${s.pct}%</span></div>`).join("")}
+        </div>
+      </div>`;
+    rows.appendChild(genreSection);
+  }
+
+  // ===== Watch heatmap (GitHub-style) =====
+  const heatmapSection = document.createElement("div");
+  heatmapSection.className = "stats-section";
+  heatmapSection.innerHTML = `<h2>Activity (last 12 weeks)</h2>${renderHeatmap()}`;
+  rows.appendChild(heatmapSection);
+
+  // ===== Time-of-day insight =====
+  const todInsight = computeTimeOfDayInsight();
+  if (todInsight) {
+    const todSection = document.createElement("div");
+    todSection.className = "stats-section";
+    todSection.innerHTML = `<h2>When You Watch</h2>
+      <div class="insight-card">
+        <div class="insight-icon">${todInsight.icon}</div>
+        <div class="insight-text">
+          <div class="insight-headline">${escapeHTML(todInsight.headline)}</div>
+          <div class="insight-sub">${escapeHTML(todInsight.sub)}</div>
+        </div>
+      </div>`;
+    rows.appendChild(todSection);
+  }
+
+  // ===== Goal setter + Export buttons =====
+  const goalSection = document.createElement("div");
+  goalSection.className = "stats-section";
+  const curGoal = monthlyGoal?.hours || "";
+  goalSection.innerHTML = `
+    <h2>Monthly Goal</h2>
+    <div class="goal-setter">
+      <label>Watch <input id="goal-input" type="number" min="0" max="500" value="${curGoal}" placeholder="0"/> hours per month</label>
+      <button class="btn" id="goal-save">Save Goal</button>
+      ${monthlyGoal ? `<button class="btn-secondary" id="goal-clear">Clear</button>` : ""}
+    </div>
+    ${monthlyGoal ? `<div class="goal-progress">
+      <div class="goal-bar"><div style="width:${Math.min(100, Math.round((monthHours / monthlyGoal.hours) * 100))}%"></div></div>
+      <div class="goal-text">${monthHours}h / ${monthlyGoal.hours}h ${monthHours >= monthlyGoal.hours ? "🎉 Reached!" : ""}</div>
+    </div>` : ""}
+    <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn-secondary" id="export-csv">📥 Export CSV</button>
+      <button class="btn-secondary" id="export-json">📥 Export JSON</button>
+      <a href="#/hidden" class="btn-secondary" style="text-decoration:none;">🙈 Hidden Titles (${Object.keys(hiddenMap).length})</a>
+    </div>`;
+  rows.appendChild(goalSection);
+  $("#goal-save").addEventListener("click", () => {
+    const h = parseInt($("#goal-input").value);
+    if (!h || h <= 0) { showToast("Enter a valid number"); return; }
+    monthlyGoal = { hours: h, month: new Date().getMonth() };
+    saveGoal();
+    showToast("Goal saved");
+    showStats();
+  });
+  $("#goal-clear")?.addEventListener("click", () => { monthlyGoal = null; saveGoal(); showStats(); });
+  $("#export-csv").addEventListener("click", exportCSV);
+  $("#export-json").addEventListener("click", exportJSON);
+
+  // ===== Tags overview =====
+  const allTags = new Set();
+  Object.values(tagsMap).forEach(arr => arr.forEach(t => allTags.add(t)));
+  if (allTags.size) {
+    const tagsSection = document.createElement("div");
+    tagsSection.className = "stats-section";
+    tagsSection.innerHTML = `<h2>Your Tags</h2>
+      <div class="tags-cloud">
+        ${[...allTags].map(t => `<a href="#/tag/${encodeURIComponent(t)}" class="tag-chip">${escapeHTML(t)}</a>`).join("")}
+      </div>`;
+    rows.appendChild(tagsSection);
+  }
+
+  // ===== Watch journal entries =====
+  const journalEntries = Object.entries(journalMap);
+  if (journalEntries.length) {
+    const jSection = document.createElement("div");
+    jSection.className = "stats-section";
+    jSection.innerHTML = `<h2>Your Watch Journal</h2><div class="journal-list">
+      ${journalEntries.slice(-10).reverse().map(([k, note]) => {
+        const v = progressMap[k];
+        const title = v?.title || "Unknown title";
+        return `<div class="journal-row"><div class="journal-title">${escapeHTML(title)}</div><div class="journal-text">${escapeHTML(note)}</div></div>`;
+      }).join("")}
+    </div>`;
+    rows.appendChild(jSection);
+  }
+}
+
+async function computeGenreBreakdown(entries) {
+  const acc = {}; // genreName -> seconds
+  for (const [k, v] of entries) {
+    const secs = (v.timestamp || 0) + Object.values(progressMap).filter(ev => ev.isEpisode && `${ev.itemType || v.itemType}:${ev.itemId || ""}` === k).reduce((a, ev) => a + (ev.timestamp || 0), 0);
+    if (!secs) continue;
+    if (v.itemType === "anime") {
+      const tagName = "Anime";
+      acc[tagName] = (acc[tagName] || 0) + secs;
+      continue;
+    }
+    try {
+      const detail = await tmdb(`/${v.itemType}/${v.itemId}`).catch(() => null);
+      const genres = (detail?.genres || []).slice(0, 2).map(g => g.name);
+      genres.forEach(g => { acc[g] = (acc[g] || 0) + secs / Math.max(1, genres.length); });
+    } catch {}
+  }
+  return Object.entries(acc).sort((a, b) => b[1] - a[1]);
+}
+
+function renderHeatmap() {
+  const weeks = 12;
+  const cells = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  // Build per-day seconds
+  const perDay = {};
+  Object.values(progressMap).forEach(v => {
+    if (!v.updatedAt) return;
+    const d = new Date(v.updatedAt); d.setHours(0,0,0,0);
+    perDay[d.getTime()] = (perDay[d.getTime()] || 0) + (v.timestamp || 0);
+  });
+  // Find max for scaling
+  const max = Math.max(1, ...Object.values(perDay));
+  const startDay = new Date(today); startDay.setDate(today.getDate() - (weeks * 7) + 1);
+  let html = `<div class="heatmap">`;
+  for (let w = 0; w < weeks; w++) {
+    html += `<div class="hm-week">`;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(startDay); day.setDate(startDay.getDate() + (w * 7) + d);
+      const secs = perDay[day.getTime()] || 0;
+      const lvl = secs === 0 ? 0 : secs < max * 0.25 ? 1 : secs < max * 0.5 ? 2 : secs < max * 0.75 ? 3 : 4;
+      const mins = Math.round(secs / 60);
+      html += `<div class="hm-cell hm-${lvl}" title="${day.toLocaleDateString()}: ${mins}m"></div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div><div class="heatmap-legend">Less <span class="hm-cell hm-0"></span><span class="hm-cell hm-1"></span><span class="hm-cell hm-2"></span><span class="hm-cell hm-3"></span><span class="hm-cell hm-4"></span> More</div>`;
+  return html;
+}
+
+function computeTimeOfDayInsight() {
+  if (!sessionsList.length) return null;
+  const buckets = [0, 0, 0, 0]; // morning, afternoon, evening, night
+  sessionsList.forEach(s => {
+    const h = new Date(s.start).getHours();
+    if (h < 12) buckets[0]++;
+    else if (h < 17) buckets[1]++;
+    else if (h < 22) buckets[2]++;
+    else buckets[3]++;
+  });
+  const labels = ["Morning watcher", "Afternoon viewer", "Evening watcher", "Late-night binger"];
+  const icons = ["☀️", "🌤", "🌆", "🌙"];
+  const subs = [
+    "You usually watch before noon — early bird energy.",
+    "You catch up after lunch most days.",
+    "Your prime time is 5pm–10pm.",
+    "You watch late into the night."
+  ];
+  let max = 0, idx = 0;
+  buckets.forEach((c, i) => { if (c > max) { max = c; idx = i; } });
+  // Weekend vs weekday
+  const wkdays = [0, 0, 0, 0, 0, 0, 0];
+  sessionsList.forEach(s => { wkdays[new Date(s.start).getDay()]++; });
+  const weekend = wkdays[0] + wkdays[6];
+  const weekday = wkdays.slice(1, 6).reduce((a, b) => a + b, 0);
+  let extraSub = "";
+  if (weekend > weekday * 0.4) extraSub = " You're also a weekend binger.";
+  return { headline: labels[idx], sub: subs[idx] + extraSub, icon: icons[idx] };
+}
+
+function exportCSV() {
+  const rows = [["Title", "Type", "Season", "Episode", "Progress%", "Watched(min)", "Updated"]];
+  Object.values(progressMap).forEach(v => {
+    if (!v.title) return;
+    rows.push([
+      v.title.replace(/"/g, '""'),
+      v.itemType,
+      v.season || "",
+      v.episode || "",
+      Math.round(v.progress || 0),
+      Math.round((v.timestamp || 0) / 60),
+      v.updatedAt ? new Date(v.updatedAt).toISOString() : ""
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+  downloadFile(`moviebox-history-${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv");
+}
+
+function exportJSON() {
+  const data = {
+    profile: activeProfile,
+    progress: progressMap,
+    myList,
+    ratings: ratingsMap,
+    tags: tagsMap,
+    journal: journalMap,
+    rewatch: rewatchMap,
+    sessions: sessionsList,
+    exportedAt: new Date().toISOString(),
+  };
+  downloadFile(`moviebox-${activeProfile?.name || "profile"}-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), "application/json");
+}
+
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`✓ Exported ${name}`);
 }
 
 // ============ YEAR RECAP ============
@@ -1201,7 +1783,12 @@ function showMyList() {
   document.body.classList.add("no-hero");
   stopHeroTrailer();
   const rows = $("#rows");
-  rows.innerHTML = `<div class="page-header"><h1>My List</h1></div>`;
+  rows.innerHTML = `<div class="page-header"><h1>My List</h1>
+    <div class="page-header-actions">
+      <button class="page-action-btn" id="multi-select-toggle">${multiSelectMode ? "Done" : "Select"}</button>
+      ${multiSelectMode && selectedListIds.size ? `<button class="page-action-btn" id="multi-remove">Remove (${selectedListIds.size})</button>` : ""}
+    </div></div>
+    <div class="page-subhead-text">Drag titles to reorder · Right-click for "Not Interested"</div>`;
   if (!myList.length) {
     rows.innerHTML += `
       <div class="empty-state">
@@ -1216,11 +1803,42 @@ function showMyList() {
     });
     return;
   }
+  $("#multi-select-toggle")?.addEventListener("click", () => {
+    multiSelectMode = !multiSelectMode;
+    selectedListIds.clear();
+    showMyList();
+  });
+  $("#multi-remove")?.addEventListener("click", () => {
+    if (!confirm(`Remove ${selectedListIds.size} titles from My List?`)) return;
+    myList = myList.filter(it => !selectedListIds.has(itemKey(it)));
+    saveMyList();
+    selectedListIds.clear();
+    multiSelectMode = false;
+    showMyList();
+  });
+
   const grid = document.createElement("div");
-  grid.className = "search-grid";
-  myList.forEach(it => {
+  grid.className = "search-grid mylist-grid" + (multiSelectMode ? " multi-mode" : "");
+  myList.forEach((it, idx) => {
     const cell = document.createElement("div");
-    cell.className = "search-cell";
+    cell.className = "search-cell mylist-cell";
+    cell.draggable = !multiSelectMode;
+    cell.dataset.idx = idx;
+    cell.dataset.key = itemKey(it);
+    if (multiSelectMode && selectedListIds.has(itemKey(it))) cell.classList.add("selected");
+    if (multiSelectMode) {
+      const checkbox = document.createElement("div");
+      checkbox.className = "mylist-checkbox";
+      checkbox.innerHTML = selectedListIds.has(itemKey(it)) ? "✓" : "";
+      cell.appendChild(checkbox);
+      cell.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const k = itemKey(it);
+        if (selectedListIds.has(k)) selectedListIds.delete(k);
+        else selectedListIds.add(k);
+        showMyList();
+      });
+    }
     cell.appendChild(makeCard(it));
     const meta = document.createElement("div");
     meta.className = "search-meta";
@@ -1230,6 +1848,30 @@ function showMyList() {
     title.textContent = it.title;
     cell.appendChild(title);
     cell.appendChild(meta);
+    // Drag handlers
+    if (!multiSelectMode) {
+      cell.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", idx);
+        cell.classList.add("dragging");
+      });
+      cell.addEventListener("dragend", () => cell.classList.remove("dragging"));
+      cell.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        cell.classList.add("drag-over");
+      });
+      cell.addEventListener("dragleave", () => cell.classList.remove("drag-over"));
+      cell.addEventListener("drop", (e) => {
+        e.preventDefault();
+        cell.classList.remove("drag-over");
+        const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+        const toIdx = idx;
+        if (fromIdx === toIdx || isNaN(fromIdx)) return;
+        const moved = myList.splice(fromIdx, 1)[0];
+        myList.splice(toIdx, 0, moved);
+        saveMyList();
+        showMyList();
+      });
+    }
     grid.appendChild(cell);
   });
   rows.appendChild(grid);
@@ -1325,6 +1967,74 @@ let modalMuted = true;
 let currentSeason = null;
 let modalDetails = null;
 
+function renderTagsAndJournal(item) {
+  const container = $(".modal-info-main");
+  if (!container) return;
+  container.querySelectorAll(".tags-journal-block").forEach(n => n.remove());
+  const wrap = document.createElement("div");
+  wrap.className = "tags-journal-block";
+  const tags = getTags(item);
+  const note = getJournal(item);
+  wrap.innerHTML = `
+    <div class="tj-row">
+      <div class="tj-label">Tags:</div>
+      <div class="tj-tags" id="tj-tags">${tags.map(t => `<span class="tj-tag">${escapeHTML(t)}<button class="tj-x" data-tag="${escapeHTML(t)}">×</button></span>`).join("")}</div>
+      <input type="text" class="tj-input" id="tj-add" placeholder="Add tag (e.g. favorite)" maxlength="20"/>
+    </div>
+    <div class="tj-row">
+      <div class="tj-label">Note:</div>
+      <textarea class="tj-textarea" id="tj-note" placeholder="A line about this title…" maxlength="280">${escapeHTML(note)}</textarea>
+    </div>
+    <div class="tj-row tj-actions">
+      <button class="tj-not-interested btn-secondary" id="tj-hide">🙈 Not Interested</button>
+    </div>`;
+  container.appendChild(wrap);
+  // Tag add
+  const addInput = wrap.querySelector("#tj-add");
+  addInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && addInput.value.trim()) {
+      const t = addInput.value.trim();
+      const cur = getTags(item);
+      if (!cur.includes(t)) setTags(item, [...cur, t]);
+      addInput.value = "";
+      renderTagsAndJournal(item);
+      sparkleAt(addInput);
+    }
+  });
+  // Tag remove
+  wrap.querySelectorAll(".tj-x").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const t = btn.dataset.tag;
+      setTags(item, getTags(item).filter(x => x !== t));
+      renderTagsAndJournal(item);
+    });
+  });
+  // Journal save (on blur)
+  const ta = wrap.querySelector("#tj-note");
+  ta.addEventListener("blur", () => {
+    setJournal(item, ta.value.trim());
+  });
+  // Hide
+  wrap.querySelector("#tj-hide").addEventListener("click", () => {
+    if (isHidden(item)) { unhideItem(item); showToast("Restored"); }
+    else { hideItem(item); showToast("🙈 Hidden — won't appear in your home rows"); }
+  });
+}
+
+function sparkleAt(el) {
+  const r = el.getBoundingClientRect();
+  for (let i = 0; i < 6; i++) {
+    const s = document.createElement("div");
+    s.className = "sparkle";
+    s.style.left = (r.left + r.width / 2) + "px";
+    s.style.top = (r.top + r.height / 2) + "px";
+    s.style.setProperty("--dx", (Math.random() * 80 - 40) + "px");
+    s.style.setProperty("--dy", (Math.random() * 80 - 40) + "px");
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 700);
+  }
+}
+
 function renderRatingButtons(item) {
   const buttonsRow = $(".modal-hero-buttons");
   if (!buttonsRow) return;
@@ -1349,6 +2059,7 @@ function renderRatingButtons(item) {
         ? (o.val === "love" ? "Loved" : o.val === "up" ? "Liked" : "Marked as not for me")
         : "Rating cleared";
       showToast(verb);
+      if (ratingsMap[`${item.type}:${item.id}`]) sparkleAt(b);
     });
     buttonsRow.appendChild(b);
   });
@@ -1454,6 +2165,7 @@ async function openModal(item, opts = {}) {
   renderRatingButtons(item);
   renderSeasonProgressIfApplicable(item);
   renderNewEpisodeBadge(item);
+  renderTagsAndJournal(item);
 
   // Trailer in modal hero
   try {
@@ -1739,6 +2451,14 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   playingCtx = ctx;
   skipIntroShown = false;
   upNextShown = false;
+  // Re-watch detection: starting a finished movie/show again increments count
+  const lastP = progressMap[progressKey(item)];
+  if (lastP?.progress >= 95) {
+    rewatchMap[itemKey(item)] = (rewatchMap[itemKey(item)] || 1) + 1;
+    saveRewatch();
+  }
+  // Start session
+  currentSession = { start: Date.now(), itemKey: itemKey(item) };
   if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null; }
   removeSkipIntro(); removeUpNext();
   nextEpContext = computeNextEpisode(item, ctx);
@@ -1886,6 +2606,17 @@ function closeModal() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  // End session
+  if (currentSession) {
+    const dur = Date.now() - currentSession.start;
+    if (dur > 30000) { // only count sessions over 30s
+      sessionsList.push({ start: currentSession.start, end: Date.now(), itemKey: currentSession.itemKey });
+      // Trim to last 500 sessions
+      if (sessionsList.length > 500) sessionsList = sessionsList.slice(-500);
+      saveSessions();
+    }
+    currentSession = null;
+  }
   playingItem = null; nextEpContext = null;
   removeSkipIntro(); removeUpNext();
   // Restore hero trailer if it was paused
@@ -1960,7 +2691,7 @@ function updateListButton() {
   $("#add-list").textContent = inList ? "✓" : "+";
   $("#add-list").title = inList ? "Remove from My List" : "Add to My List";
 }
-$("#add-list").addEventListener("click", () => { if (currentItem) toggleList(currentItem); });
+$("#add-list").addEventListener("click", (e) => { if (currentItem) { toggleList(currentItem); sparkleAt(e.currentTarget); } });
 
 // ---------- Watch Progress ----------
 window.addEventListener("message", (event) => {
@@ -2040,7 +2771,7 @@ async function getRecommendedForYou() {
 
 function getContinueWatching() {
   return Object.entries(progressMap)
-    .filter(([k, v]) => !v.isEpisode && v.progress > 1 && v.progress < 95 && !dismissedMap[k])
+    .filter(([k, v]) => !v.isEpisode && v.progress > 1 && v.progress < 95 && !dismissedMap[k] && !hiddenMap[k])
     .sort((a, b) => {
       // Sort by "almost finished" first (>75%), then by recency
       const aAlmost = a[1].progress > 75;
@@ -2108,6 +2839,9 @@ async function route() {
   else if (parts[0] === "stats") { p = showStats(); }
   else if (parts[0] === "history") { showHistory(); p = Promise.resolve(); }
   else if (parts[0] === "recap") { showYearRecap(); p = Promise.resolve(); }
+  else if (parts[0] === "mood" && parts[1]) { p = showMood(parts[1]); }
+  else if (parts[0] === "hidden") { showHiddenTitles(); p = Promise.resolve(); }
+  else if (parts[0] === "tag" && parts[1]) { p = showByTag(decodeURIComponent(parts[1])); }
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
@@ -2165,6 +2899,17 @@ function closeModalSilent() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  // End session
+  if (currentSession) {
+    const dur = Date.now() - currentSession.start;
+    if (dur > 30000) { // only count sessions over 30s
+      sessionsList.push({ start: currentSession.start, end: Date.now(), itemKey: currentSession.itemKey });
+      // Trim to last 500 sessions
+      if (sessionsList.length > 500) sessionsList = sessionsList.slice(-500);
+      saveSessions();
+    }
+    currentSession = null;
+  }
   playingItem = null; nextEpContext = null;
   removeSkipIntro(); removeUpNext();
   const heroIframe = $("#hero-trailer iframe");
@@ -2409,6 +3154,10 @@ function selectProfile(p) {
   activeProfile = p; saveJSON(STORAGE.profile, p);
   loadProfileData();
   migrateEpisodeProgress();
+  // Apply profile-themed accent color
+  document.documentElement.style.setProperty("--profile-accent", p.color);
+  document.body.style.setProperty("--profile-glow", p.color + "33");
+  checkBedtime();
   manageMode = false; document.body.classList.remove("profile-manage-mode");
   $("#manage-profiles").textContent = "Manage Profiles";
   $("#profile-screen").classList.add("hidden");
