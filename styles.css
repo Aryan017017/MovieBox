@@ -2047,10 +2047,8 @@ body.bedtime #hero-trailer { opacity: 0.7; }
   .achievement-toast { right: 10px; left: 10px; max-width: none; }
 }
 
-/* ================ Bedtime mode ================ */
-body.bedtime { filter: brightness(0.85) sepia(0.1); }
-body.bedtime .hero { filter: brightness(0.7); }
-body.bedtime .card-trailer, body.bedtime .hero-trailer { display: none; }
+/* ================ Bedtime mode (subtle dim only) ================ */
+body.bedtime { filter: brightness(0.92) sepia(0.04); }
 
 /* ================ Touch (no hover) ================ */
 @media (hover: none) and (pointer: coarse) {
