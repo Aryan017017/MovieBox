@@ -888,41 +888,12 @@ async function showHome() {
     if (continueItems.length) rows.appendChild(renderRow("Continue Watching", continueItems, { showProgress: true }));
     if (myList.length) rows.appendChild(renderRow("My List", myList));
 
-    // Daily pick (deterministic by date)
-    const dailyItems = trendingItems.filter(it => !isHidden(it) && (parseFloat(it.rating) || 0) >= 7);
-    if (dailyItems.length) {
-      const seed = new Date().toISOString().slice(0, 10).split("-").reduce((a, b) => a + parseInt(b), 0);
-      const pick = dailyItems[seed % dailyItems.length];
-      const dailyRow = renderRow(`Today's Pick for ${escapeHTML(activeProfile?.name || "You")}`, [pick], { showProgress: false, subtitle: "🎬 Hand-picked daily" });
-      rows.appendChild(dailyRow);
-    }
-
-    // Mood filter chips
-    const moodChips = document.createElement("div");
-    moodChips.className = "mood-chips";
-    moodChips.innerHTML = `
-      <span class="mood-label">Mood:</span>
-      <button class="mood-chip" data-mood="quick">⚡ Quick (<90min)</button>
-      <button class="mood-chip" data-mood="binge">🍿 Long Binge</button>
-      <button class="mood-chip" data-mood="light">😊 Light</button>
-      <button class="mood-chip" data-mood="heavy">🎭 Heavy Drama</button>
-      <button class="mood-chip" data-mood="mind">🧠 Mind-Bending</button>
-      <button class="mood-chip surprise" id="surprise-chip">🎲 Surprise Me</button>`;
-    rows.appendChild(moodChips);
-    moodChips.querySelectorAll(".mood-chip[data-mood]").forEach(chip => {
-      chip.addEventListener("click", () => filterByMood(chip.dataset.mood));
-    });
-    $("#surprise-chip").addEventListener("click", surpriseMe);
-
     // Recommended for You with named "Because you watched X" rows
     getNamedRecommendations().then(namedRows => {
       namedRows.forEach(({ label, items, subtitle }) => {
         if (!items.length) return;
         const r = renderRow(label, items, { subtitle });
-        // Insert after Daily Pick / mood chips
-        const insertAfter = rows.querySelector(".mood-chips");
-        if (insertAfter) insertAfter.after(r);
-        else rows.appendChild(r);
+        rows.appendChild(r);
       });
     }).catch(() => {});
 
@@ -937,51 +908,14 @@ async function showHome() {
     rows.appendChild(renderRow("Trending Anime", anime));
     rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
 
-    // Hidden Gems row (high rating, low vote count)
-    try {
-      const gems = await tmdb("/discover/movie", { sort_by: "vote_average.desc", "vote_count.gte": 200, "vote_count.lte": 1500, "vote_average.gte": 7.5 });
-      const gemItems = gems.results.filter(r => r.backdrop_path && r.poster_path).slice(0, 18).map(r => ({ ...normalizeTMDB(r, "movie"), isGem: true }));
-      if (gemItems.length) rows.appendChild(renderRow("💎 Hidden Gems", gemItems, { subtitle: "Underrated picks worth watching" }));
-    } catch {}
-
     // Genre rows (lazy after main content)
     for (const g of GENRES_MOVIE.slice(0, 5)) {
       const data = await tmdb("/discover/movie", { with_genres: g.id, sort_by: "popularity.desc" });
       rows.appendChild(renderRow(g.name, data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     }
-
-    // Floating budget gauge if goal set
-    renderBudgetGauge();
   } catch (e) {
     rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
   }
-}
-
-// ===== Mood filters =====
-const MOOD_GENRES = {
-  quick: { "with_runtime.lte": 90 },
-  binge: { "with_runtime.gte": 130 },
-  light: { with_genres: "35,10751,16" },     // comedy + family + animation
-  heavy: { with_genres: "18,53,9648" },      // drama + thriller + mystery
-  mind:  { with_genres: "878,9648,53" },     // sci-fi + mystery + thriller
-};
-async function filterByMood(mood) {
-  const params = MOOD_GENRES[mood];
-  if (!params) return;
-  navTo("#/mood/" + mood);
-}
-
-// ===== Surprise Me =====
-async function surpriseMe() {
-  try {
-    const page = Math.floor(Math.random() * 5) + 1;
-    const data = await tmdb("/discover/movie", { sort_by: "popularity.desc", "vote_count.gte": 500, page });
-    const candidates = data.results.filter(r => r.backdrop_path && r.poster_path);
-    if (!candidates.length) return;
-    const pick = normalizeTMDB(candidates[Math.floor(Math.random() * candidates.length)], "movie");
-    showToast(`🎲 Surprise: ${pick.title}`);
-    navTo(`#/title/movie/${pick.id}`);
-  } catch (e) { showToast("Couldn't pick a surprise — try again"); }
 }
 
 // ===== "Because you watched X" - named recommendation rows =====
@@ -1214,8 +1148,7 @@ function showHistory() {
   const entries = Object.entries(progressMap)
     .filter(([, v]) => v.title)
     .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
-  rows.innerHTML = `<div class="page-header"><h1>Watch History</h1>
-    <div class="page-header-actions"><a href="#/stats" class="page-action-btn">📊 View Stats</a></div></div>`;
+  rows.innerHTML = `<div class="page-header"><h1>Viewing Activity</h1></div>`;
   if (!entries.length) {
     rows.innerHTML += `
       <div class="empty-state">
@@ -1333,42 +1266,6 @@ function renderHistoryGroup(grid, entries) {
 }
 
 // ============== MOOD PAGE ==============
-async function showMood(mood) {
-  setActive(null);
-  document.body.classList.add("no-hero");
-  stopHeroTrailer();
-  const rows = $("#rows");
-  const labels = {
-    quick: { icon: "⚡", title: "Quick Watch", subtitle: "Movies under 90 minutes" },
-    binge: { icon: "🍿", title: "Long Binge", subtitle: "Settle in for a long one (130min+)" },
-    light: { icon: "😊", title: "Something Light", subtitle: "Comedy, family, animation" },
-    heavy: { icon: "🎭", title: "Heavy Drama", subtitle: "Drama, thriller, mystery" },
-    mind:  { icon: "🧠", title: "Mind-Bending", subtitle: "Sci-fi, mystery, thriller" },
-  };
-  const info = labels[mood] || labels.quick;
-  rows.innerHTML = `<div class="page-header"><h1>${info.icon} ${escapeHTML(info.title)}</h1>
-    <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>
-    <p class="page-subhead-text">${escapeHTML(info.subtitle)}</p>`;
-  try {
-    const params = { ...MOOD_GENRES[mood], sort_by: "popularity.desc", "vote_count.gte": 200 };
-    const data = await tmdb("/discover/movie", params);
-    const items = data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"));
-    const grid = document.createElement("div");
-    grid.className = "search-grid";
-    items.forEach(it => {
-      const cell = document.createElement("div"); cell.className = "search-cell";
-      cell.appendChild(makeCard(it));
-      const meta = document.createElement("div"); meta.className = "search-meta";
-      meta.innerHTML = `<span class="type-pill">Movie</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
-      const title = document.createElement("div"); title.className = "search-title";
-      title.textContent = it.title;
-      cell.appendChild(title); cell.appendChild(meta);
-      grid.appendChild(cell);
-    });
-    rows.appendChild(grid);
-  } catch (e) { rows.innerHTML += `<div class="empty">${escapeHTML(e.message)}</div>`; }
-}
-
 // ============== HIDDEN TITLES PAGE ==============
 function showHiddenTitles() {
   setActive(null);
@@ -2715,7 +2612,6 @@ async function openModal(item, opts = {}) {
   renderRatingButtons(item);
   renderSeasonProgressIfApplicable(item);
   renderNewEpisodeBadge(item);
-  renderTagsAndJournal(item);
 
   // Trailer in modal hero
   try {
@@ -2994,7 +2890,8 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
-    allowfullscreen referrerpolicy="no-referrer"></iframe>`;
+    allowfullscreen referrerpolicy="no-referrer"></iframe>
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
   $("#modal").scrollTop = 0;
 
   playingItem = item;
@@ -3013,8 +2910,6 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   }
   // Track affinity in background
   trackAffinityForItem(item);
-  // Check achievements after a brief delay
-  setTimeout(checkAchievements, 1500);
   if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null; }
   removeSkipIntro(); removeUpNext();
   nextEpContext = computeNextEpisode(item, ctx);
@@ -3186,7 +3081,11 @@ function closeModalNav() {
 }
 $(".modal-close").addEventListener("click", closeModalNav);
 $(".modal-backdrop").addEventListener("click", closeModalNav);
-document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeModalNav(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || $("#modal").classList.contains("hidden")) return;
+  if (document.fullscreenElement) return;  // let the browser exit fullscreen; don't also close the modal
+  closeModalNav();
+});
 
 $("#hero-play-btn").addEventListener("click", () => {
   if (!currentItem) return;
@@ -3297,6 +3196,28 @@ window.addEventListener("message", (event) => {
     if (remaining > 0 && remaining <= 25 && !upNextShown) showUpNext();
   }
 });
+
+// Our own fullscreen control for the player: third-party embeds (videasy in
+// particular) often ship a fullscreen button whose click handler silently
+// fails — e.g. blocked by browser ad/tracker shields since the embed is a
+// known ad-monetized domain — leaving the icon toggling with no visible
+// effect. Fullscreening the wrapper div ourselves (same-origin, always
+// trusted) sidesteps that entirely; the iframe already fills the wrapper.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#player-fs-btn")) return;
+  const wrap = $("#player-wrap");
+  if (document.fullscreenElement === wrap) document.exitFullscreen();
+  else wrap.requestFullscreen?.().catch(() => {});
+});
+document.addEventListener("fullscreenchange", () => {
+  const btn = document.getElementById("player-fs-btn");
+  if (!btn) return;
+  const isFs = document.fullscreenElement === $("#player-wrap");
+  btn.textContent = isFs ? "⤡" : "⛶";
+  btn.title = isFs ? "Exit Fullscreen" : "Fullscreen";
+  btn.setAttribute("aria-label", btn.title);
+});
+
 function progressKey(item) { return `${item.type}:${item.id}`; }
 function episodeProgressKey(item, season, episode) { return `${item.type}:${item.id}:s${season}:e${episode}`; }
 // A show-level progress entry's `timestamp` is just the playback position of
@@ -3409,7 +3330,6 @@ async function route() {
   else if (parts[0] === "stats") { p = showStats(); }
   else if (parts[0] === "history") { showHistory(); p = Promise.resolve(); }
   else if (parts[0] === "recap") { showYearRecap(); p = Promise.resolve(); }
-  else if (parts[0] === "mood" && parts[1]) { p = showMood(parts[1]); }
   else if (parts[0] === "hidden") { showHiddenTitles(); p = Promise.resolve(); }
   else if (parts[0] === "tag" && parts[1]) { p = showByTag(decodeURIComponent(parts[1])); }
   else if (parts[0] === "library") { showLibrary(parts[1] || "watching"); p = Promise.resolve(); }

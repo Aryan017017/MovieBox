@@ -617,6 +617,17 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   position: relative; padding-bottom: 56.25%; height: 0; background: #000; display: none;
 }
 .player-wrap.active { display: block; }
+.player-wrap:fullscreen { padding-bottom: 0; height: 100%; }
+.player-fs-btn {
+  position: absolute; bottom: 14px; right: 14px; z-index: 6;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(20,20,20,0.85); color: #fff; border: 0;
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s, transform 0.15s;
+}
+.player-fs-btn:hover { background: rgba(40,40,40,0.95); transform: scale(1.05); }
 .player-overlay-skip {
   position: absolute; bottom: 14%; right: 24px; z-index: 6;
   background: rgba(0,0,0,0.8); color: #fff;
@@ -1488,23 +1499,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
-
-/* ================ Mood chips on home ================ */
-.mood-chips {
-  display: flex; gap: 10px; padding: 0 4%; margin: 8px 0 24px;
-  align-items: center; flex-wrap: wrap;
-}
-.mood-label { color: #999; font-size: 13px; font-weight: 600; margin-right: 4px; }
-.mood-chip {
-  background: rgba(255,255,255,0.06); color: #fff;
-  border: 1px solid rgba(255,255,255,0.1);
-  padding: 8px 16px; border-radius: 20px;
-  font-size: 13px; cursor: pointer;
-  transition: all 200ms;
-}
-.mood-chip:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
-.mood-chip.surprise { background: linear-gradient(90deg, #e50914, #ff8a00); border: none; font-weight: 600; }
-.mood-chip.surprise:hover { box-shadow: 0 4px 14px rgba(229,9,20,0.4); }
 
 /* ================ Top 10 #1 badge ================ */
 .top10-badge {
