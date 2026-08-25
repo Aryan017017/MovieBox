@@ -2049,6 +2049,10 @@ body.bedtime #hero-trailer { opacity: 0.7; }
 
 /* ================ Bedtime mode (subtle dim only) ================ */
 body.bedtime { filter: brightness(0.92) sepia(0.04); }
+/* A CSS filter on an ancestor breaks the Fullscreen API for the embedded
+   player iframe (it can't escape the filtered element's containing block),
+   so drop the dim while a title is actually playing. */
+body.bedtime:has(.modal-body.playing) { filter: none; }
 
 /* ================ Touch (no hover) ================ */
 @media (hover: none) and (pointer: coarse) {
