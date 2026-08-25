@@ -26,6 +26,7 @@ const PLAYER_BASES = {
   embedsu: "https://embed.su/embed",
 };
 const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
+const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
 const YT = "https://www.youtube.com/embed/";
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -478,8 +479,11 @@ function extractDominantColor(url) {
   if (!url) return Promise.resolve(null);
   if (colorCache.has(url)) return Promise.resolve(colorCache.get(url));
   return new Promise((resolve) => {
+    // Note: TMDB's image CDN does not send CORS headers, so requesting the
+    // image as crossOrigin="anonymous" makes it fail to load at all. Loading
+    // it without crossOrigin still lets it render normally; the canvas read
+    // below just throws (caught) and we fall back to no tint.
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
         const W = 64, H = 64;
@@ -955,8 +959,8 @@ async function showHome() {
 
 // ===== Mood filters =====
 const MOOD_GENRES = {
-  quick: { with_runtime_lte: 90 },
-  binge: { with_runtime_gte: 130 },
+  quick: { "with_runtime.lte": 90 },
+  binge: { "with_runtime.gte": 130 },
   light: { with_genres: "35,10751,16" },     // comedy + family + animation
   heavy: { with_genres: "18,53,9648" },      // drama + thriller + mystery
   mind:  { with_genres: "878,9648,53" },     // sci-fi + mystery + thriller
@@ -1222,7 +1226,8 @@ function showHistory() {
     return;
   }
   // Stats
-  const totalSeconds = entries.reduce((acc, [, v]) => acc + (v.timestamp || 0), 0);
+  const totalSeconds = entries.reduce((acc, [, v]) => acc + (hasEpisodeTracking(v) ? 0 : (v.timestamp || 0)), 0) +
+    Object.values(progressMap).filter(v => v.isEpisode).reduce((a, v) => a + (v.timestamp || 0), 0);
   const totalMinutes = Math.round(totalSeconds / 60);
   const inProgress = entries.filter(([, v]) => v.progress > 1 && v.progress < 95).length;
   const finished = entries.filter(([, v]) => v.progress >= 95).length;
@@ -1738,7 +1743,7 @@ async function showStats() {
   }
 
   // Compute stats
-  const totalSeconds = entries.reduce((acc, [, v]) => acc + (v.timestamp || 0), 0) +
+  const totalSeconds = entries.reduce((acc, [, v]) => acc + (hasEpisodeTracking(v) ? 0 : (v.timestamp || 0)), 0) +
     Object.values(progressMap).filter(v => v.isEpisode).reduce((a, v) => a + (v.timestamp || 0), 0);
   const totalHours = Math.round(totalSeconds / 3600);
   const totalMinutes = Math.round(totalSeconds / 60);
@@ -1759,7 +1764,7 @@ async function showStats() {
   // This month minutes
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   const monthSecs = entries.filter(([, v]) => (v.updatedAt || 0) >= monthStart.getTime())
-    .reduce((a, [, v]) => a + (v.timestamp || 0), 0) +
+    .reduce((a, [, v]) => a + (hasEpisodeTracking(v) ? 0 : (v.timestamp || 0)), 0) +
     Object.values(progressMap).filter(v => v.isEpisode && (v.updatedAt || 0) >= monthStart.getTime())
     .reduce((a, v) => a + (v.timestamp || 0), 0);
   const monthHours = Math.round(monthSecs / 3600);
@@ -2024,7 +2029,8 @@ async function showStats() {
 async function computeGenreBreakdown(entries) {
   const acc = {}; // genreName -> seconds
   for (const [k, v] of entries) {
-    const secs = (v.timestamp || 0) + Object.values(progressMap).filter(ev => ev.isEpisode && `${ev.itemType || v.itemType}:${ev.itemId || ""}` === k).reduce((a, ev) => a + (ev.timestamp || 0), 0);
+    const episodeSecs = Object.entries(progressMap).filter(([ek, ev]) => ev.isEpisode && ek.startsWith(k + ":s")).reduce((a, [, ev]) => a + (ev.timestamp || 0), 0);
+    const secs = (episodeSecs > 0 ? 0 : (v.timestamp || 0)) + episodeSecs;
     if (!secs) continue;
     if (v.itemType === "anime") {
       const tagName = "Anime";
@@ -3245,6 +3251,7 @@ $("#add-list").addEventListener("click", (e) => { if (currentItem) { toggleList(
 
 // ---------- Watch Progress ----------
 window.addEventListener("message", (event) => {
+  if (event.origin !== PLAYER_ORIGIN) return;  // only trust the embedded player iframe
   let data = event.data;
   if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
   if (!data || typeof data !== "object" || data.id == null || !data.type) return;
@@ -3292,6 +3299,18 @@ window.addEventListener("message", (event) => {
 });
 function progressKey(item) { return `${item.type}:${item.id}`; }
 function episodeProgressKey(item, season, episode) { return `${item.type}:${item.id}:s${season}:e${episode}`; }
+// A show-level progress entry's `timestamp` is just the playback position of
+// the last-watched episode. For TV/anime with per-episode tracking, that same
+// position is already represented by an `.isEpisode` entry, so summing both
+// double-counts it. Movies (and anime movies) never get per-episode entries,
+// so their own timestamp remains the only source for them.
+function hasEpisodeTracking(v) {
+  // Per-episode entries don't carry itemType/itemId of their own — the show
+  // they belong to is only encoded in their progressMap key (see
+  // episodeProgressKey), so match on the key prefix instead.
+  const prefix = `${v.itemType}:${v.itemId}:s`;
+  return Object.entries(progressMap).some(([k, ev]) => ev.isEpisode && k.startsWith(prefix));
+}
 async function getRecommendedForYou() {
   // Seed from My List + most recent Continue Watching
   const seeds = [];
