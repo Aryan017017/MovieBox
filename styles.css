@@ -245,10 +245,14 @@ button { font-family: inherit; }
 /* Once the trailer's been playing a few seconds, ease the title/description
    out of the way so the video gets the focus — Netflix does the same. */
 .hero-content .hero-title-slot,
+.hero-content .badges,
+.hero-content .hero-meta-line,
 .hero-content p {
   transition: opacity 1.5s var(--ease-soft);
 }
 .hero-content.trailer-active .hero-title-slot,
+.hero-content.trailer-active .badges,
+.hero-content.trailer-active .hero-meta-line,
 .hero-content.trailer-active p {
   opacity: 0; pointer-events: none;
 }
