@@ -449,15 +449,15 @@ button { font-family: inherit; }
 .top10-card:hover { transform: scale(1.05); z-index: 10; }
 .top10-number {
   font-family: "Bebas Neue", sans-serif;
-  font-size: 240px; line-height: 0.85; font-weight: 400;
+  font-size: 160px; line-height: 0.85; font-weight: 400;
   color: #000;
   -webkit-text-stroke: 4px #4a4a4a;
-  margin-right: -50px; flex-shrink: 0;
+  margin-right: -18px; flex-shrink: 0;
   letter-spacing: -10px;
   filter: drop-shadow(2px 4px 0 rgba(0,0,0,0.3));
 }
 .top10-poster {
-  width: 60%; height: 100%;
+  width: 74%; height: 100%;
   background-size: cover; background-position: center;
   border-radius: 4px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
@@ -1050,7 +1050,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .card { flex: 0 0 22%; min-width: 160px; }
   .skeleton-row .sk-card { flex: 0 0 22%; min-width: 160px; }
   .top10-card { flex: 0 0 36%; min-width: 280px; }
-  .top10-number { font-size: 200px; }
+  .top10-number { font-size: 130px; margin-right: -14px; }
   .modal-body { width: 92%; margin: 24px auto; }
   .modal-hero-content h2 { font-size: 32px; }
   .modal-info-grid { grid-template-columns: 1fr; gap: 18px; }
@@ -1146,7 +1146,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 
   /* Top 10 */
   .top10-card { flex: 0 0 70%; min-width: 240px; }
-  .top10-number { font-size: 130px; -webkit-text-stroke: 2px #4a4a4a; margin-right: -22px; }
+  .top10-number { font-size: 90px; -webkit-text-stroke: 2px #4a4a4a; margin-right: -10px; }
 
   /* Login screen */
   .login-card { padding: 32px 22px; }
