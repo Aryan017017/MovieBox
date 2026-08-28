@@ -561,9 +561,16 @@ function applyModalTint(color) {
 const lazyImageObserver = new IntersectionObserver((entries) => {
   entries.forEach(e => {
     if (e.isIntersecting && e.target.dataset.bg) {
-      e.target.style.backgroundImage = `url("${e.target.dataset.bg}")`;
-      e.target.removeAttribute("data-bg");
-      lazyImageObserver.unobserve(e.target);
+      const url = e.target.dataset.bg;
+      const target = e.target;
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        target.style.backgroundImage = `url("${url}")`;
+        target.classList.add("img-loaded");
+      };
+      img.src = url;
+      target.removeAttribute("data-bg");
+      lazyImageObserver.unobserve(target);
     }
   });
 }, { rootMargin: "200px 100px" });
@@ -739,8 +746,9 @@ function renderRow(title, items, opts = {}) {
   if (items && !opts.showHidden) {
     items = items.filter(it => it && !isHidden(it));
   }
-  row.innerHTML = `<h2>${escapeHTML(title)}${opts.subtitle ? ` <span class="row-subtitle">${escapeHTML(opts.subtitle)}</span>` : ""}</h2><div class="row-wrap"></div>`;
+  row.innerHTML = `<div class="row-head"><h2>${escapeHTML(title)}${opts.subtitle ? ` <span class="row-subtitle">${escapeHTML(opts.subtitle)}</span>` : ""}</h2><div class="row-progress"></div></div><div class="row-wrap"></div>`;
   const wrap = $(".row-wrap", row);
+  const progress = $(".row-progress", row);
   if (!items || items.length === 0) {
     wrap.innerHTML = `<div class="empty">Nothing here yet.</div>`;
     return row;
@@ -769,6 +777,21 @@ function renderRow(title, items, opts = {}) {
   left.addEventListener("click", () => scroll.scrollBy({ left: -scroll.clientWidth * 0.85, behavior: "smooth" }));
   right.addEventListener("click", () => scroll.scrollBy({ left: scroll.clientWidth * 0.85, behavior: "smooth" }));
   wrap.appendChild(left); wrap.appendChild(right);
+
+  // Netflix-style row scroll-position dots next to the title
+  function updateRowProgress() {
+    const dotsCount = Math.min(6, Math.max(1, Math.ceil(scroll.scrollWidth / Math.max(1, scroll.clientWidth))));
+    if (dotsCount <= 1) { progress.innerHTML = ""; return; }
+    if (progress.children.length !== dotsCount) {
+      progress.innerHTML = Array.from({ length: dotsCount }, () => `<span class="row-dot"></span>`).join("");
+    }
+    const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+    const ratio = maxScroll > 0 ? scroll.scrollLeft / maxScroll : 0;
+    const active = Math.min(dotsCount - 1, Math.round(ratio * (dotsCount - 1)));
+    [...progress.children].forEach((d, i) => d.classList.toggle("active", i === active));
+  }
+  scroll.addEventListener("scroll", updateRowProgress, { passive: true });
+  requestAnimationFrame(updateRowProgress);
   return row;
 }
 
@@ -2763,16 +2786,22 @@ function makeSimilarCard(item) {
   div.className = "similar-card";
   const bg = item.backdropMd || item.backdrop || item.poster;
   div.innerHTML = `
-    <div class="sim-img" style="background-image:url('${bg || ""}')"></div>
+    <div class="sim-img" style="background-image:url('${bg || ""}')">
+      <div class="sim-title-overlay">${escapeHTML(item.title || "")}</div>
+    </div>
     <div class="sim-body">
       <div class="sim-meta">
         ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
         <span>${item.year || ""}</span>
+        <button type="button" class="sim-add" aria-label="Add ${escapeHTML(item.title || "")} to My List">+</button>
       </div>
-      <div class="sim-title">${escapeHTML(item.title)}</div>
       <div class="sim-overview">${escapeHTML(item.overview || "")}</div>
     </div>`;
   div.addEventListener("click", () => openModal(item));
+  div.querySelector(".sim-add").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleList(item);
+  });
   makeFocusableActivatable(div, item.title || "Untitled", () => openModal(item));
   return div;
 }
