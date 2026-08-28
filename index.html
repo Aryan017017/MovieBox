@@ -17,29 +17,29 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=54" />
+<link rel="stylesheet" href="styles.css?v=55" />
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
-<!-- Profile Selection -->
-<div id="profile-screen" class="profile-screen">
-  <div class="profile-inner">
-    <h1>Who's watching?</h1>
-    <div id="profile-list" class="profile-list"></div>
-    <button id="manage-profiles" class="profile-manage">Manage Profiles</button>
-  </div>
-</div>
-
-<div id="profile-edit-modal" class="profile-edit-modal hidden">
-  <div class="profile-edit-backdrop"></div>
-  <div class="profile-edit-body">
-    <h2 id="profile-edit-title">Edit Profile</h2>
-    <input id="profile-name-input" type="text" placeholder="Name" maxlength="20" />
-    <div class="color-picker" id="color-picker"></div>
-    <div class="profile-edit-buttons">
-      <button id="profile-edit-save" class="btn">Save</button>
-      <button id="profile-edit-delete" class="btn-secondary">Delete</button>
-      <button id="profile-edit-cancel" class="btn-secondary">Cancel</button>
+<!-- Login / Sign up -->
+<div id="login-screen" class="login-screen">
+  <div class="login-inner">
+    <h1 class="logo login-logo">MOVIEBOX</h1>
+    <div class="login-card">
+      <h2 id="login-title">Sign In</h2>
+      <div id="login-error" class="login-error hidden"></div>
+      <form id="login-form">
+        <input id="login-email" type="email" placeholder="Email" autocomplete="email" required />
+        <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required minlength="6" />
+        <button type="submit" id="login-submit" class="btn login-submit">Sign In</button>
+      </form>
+      <p class="login-switch">
+        <span id="login-switch-text">New to MovieBox?</span>
+        <a href="#" id="login-switch-link">Sign up now</a>
+      </p>
     </div>
   </div>
 </div>
@@ -72,9 +72,10 @@
       <div class="profile-avatar-mini" id="profile-avatar-mini"></div>
       <span class="caret">▾</span>
       <div class="profile-menu" id="profile-menu">
-        <a href="#" id="switch-profile">Switch profiles</a>
+        <div class="profile-menu-email" id="profile-menu-email"></div>
         <a href="#/history" data-nav="history">Viewing activity</a>
         <a href="#" id="clear-data">Clear watch data</a>
+        <a href="#" id="logout-btn">Log out</a>
       </div>
     </div>
   </div>
@@ -184,6 +185,17 @@
   </div>
 </div>
 
-<script src="app.js?v=56"></script>
+<script>
+  // Firebase config — safe to be public; access is enforced by Firestore security rules.
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDXQGbr_dAUE-PVC_gN4Y94iMi3BfBvoWU",
+    authDomain: "moviebox-224b8.firebaseapp.com",
+    projectId: "moviebox-224b8",
+    storageBucket: "moviebox-224b8.firebasestorage.app",
+    messagingSenderId: "93182489172",
+    appId: "1:93182489172:web:c614f5c616eda922dab3c1",
+  };
+</script>
+<script src="app.js?v=57"></script>
 </body>
 </html>

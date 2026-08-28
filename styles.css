@@ -51,94 +51,39 @@ button { font-family: inherit; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.hidden { display: none; }
 
-/* ================ Profile Screen ================ */
-.profile-screen {
+/* ================ Login Screen ================ */
+.login-screen {
   position: fixed; inset: 0; z-index: 1000;
   background: radial-gradient(ellipse at center, #1a1a1a 0%, #000 70%);
   display: flex; align-items: center; justify-content: center;
   animation: fadeIn 0.5s var(--ease);
 }
-.profile-inner { text-align: center; animation: slideUp 0.7s var(--ease); }
-.profile-inner h1 {
-  font-size: 64px; font-weight: 300; margin-bottom: 48px;
-  color: #e5e5e5; letter-spacing: -0.02em;
+.login-screen.hidden { display: none; }
+.login-inner { text-align: center; animation: slideUp 0.5s var(--ease); width: 100%; max-width: 380px; padding: 0 20px; }
+.login-logo { color: var(--accent); font-size: 36px; margin-bottom: 32px; }
+.login-card {
+  background: rgba(0,0,0,0.75); border-radius: 8px;
+  padding: 40px 34px; box-shadow: var(--shadow-lg);
+  text-align: left;
 }
-.profile-list { display: flex; gap: 36px; flex-wrap: wrap; justify-content: center; }
-.profile-card {
-  cursor: pointer; text-align: center;
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
-  transition: transform 0.3s var(--ease);
+.login-card h2 { font-size: 26px; margin-bottom: 22px; text-align: left; }
+.login-error {
+  background: rgba(229,9,20,0.15); border: 1px solid rgba(229,9,20,0.5);
+  color: #ff6b6f; font-size: 13px; padding: 10px 12px; border-radius: 4px;
+  margin-bottom: 16px;
 }
-.profile-card:hover { transform: translateY(-4px); }
-.profile-card:hover .avatar { border-color: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,0.05), var(--shadow-md); }
-.avatar {
-  width: 144px; height: 144px; border-radius: 10px;
-  border: 3px solid transparent;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 64px; font-weight: 700;
-  color: #fff;
-  transition: all 0.3s var(--ease);
-}
-.profile-card .name { color: var(--muted); font-size: 18px; font-weight: 500; transition: color 0.2s; }
-.profile-card:hover .name { color: #fff; }
-.profile-card .edit-pencil {
-  position: absolute; top: 8px; right: 8px;
-  background: rgba(0,0,0,0.7); color: #fff;
-  width: 32px; height: 32px; border-radius: 50%;
-  border: 0; font-size: 14px; cursor: pointer;
-  opacity: 0; transition: opacity 0.2s;
-  display: flex; align-items: center; justify-content: center;
-}
-body.profile-manage-mode .profile-card .edit-pencil { opacity: 1; }
-.profile-card { position: relative; }
-.profile-card.add-card .avatar {
-  background: rgba(255,255,255,0.05) !important;
-  border: 2px dashed rgba(255,255,255,0.3) !important;
-  font-size: 64px; font-weight: 200; color: var(--muted);
-}
-.profile-card.add-card:hover .avatar {
-  background: rgba(255,255,255,0.1) !important;
-  border-color: #fff !important;
-  color: #fff;
-}
-.profile-manage {
-  margin-top: 36px; background: transparent; color: var(--muted);
-  border: 1px solid var(--muted-2); padding: 8px 22px;
-  font-size: 14px; cursor: pointer; font-family: inherit;
-  letter-spacing: 0.05em; transition: color 0.2s, border-color 0.2s;
-}
-.profile-manage:hover { color: #fff; border-color: #fff; }
-body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
-
-/* Profile edit modal */
-.profile-edit-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; }
-.profile-edit-modal.hidden { display: none; }
-.profile-edit-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.85); }
-.profile-edit-body {
-  position: relative; z-index: 1; background: var(--bg-2);
-  padding: 40px; border-radius: 8px; min-width: 380px;
-  box-shadow: var(--shadow-lg);
-  animation: modalIn 0.3s var(--ease);
-}
-.profile-edit-body h2 { font-size: 24px; margin-bottom: 24px; }
-.profile-edit-body input {
-  background: var(--bg); border: 1px solid #333; color: #fff;
-  padding: 10px 14px; border-radius: 4px; font-size: 15px;
+.login-error.hidden { display: none; }
+#login-form { display: flex; flex-direction: column; gap: 14px; }
+#login-form input {
+  background: var(--bg-2); border: 1px solid #444; color: #fff;
+  padding: 13px 14px; border-radius: 4px; font-size: 15px;
   width: 100%; outline: none; font-family: inherit;
-  margin-bottom: 18px;
 }
-.profile-edit-body input:focus { border-color: #fff; }
-.color-picker { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
-.color-swatch {
-  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
-  border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
-}
-.color-swatch:hover { transform: scale(1.1); }
-.color-swatch.active { border-color: #fff; }
-.profile-edit-buttons { display: flex; gap: 10px; }
-.profile-edit-buttons .btn { padding: 9px 22px; font-size: 14px; }
-.profile-edit-buttons .btn-secondary { padding: 9px 22px; font-size: 14px; }
-#profile-edit-delete { margin-left: auto; }
+#login-form input:focus { border-color: #fff; }
+.login-submit { width: 100%; padding: 12px; font-size: 15px; margin-top: 6px; }
+.login-switch { margin-top: 20px; color: var(--muted); font-size: 14px; text-align: left; }
+.login-switch a { color: #fff; font-weight: 600; margin-left: 4px; }
+.login-switch a:hover { text-decoration: underline; }
 
 /* ================ Navbar ================ */
 #navbar {
@@ -244,6 +189,11 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   border-radius: 4px; box-shadow: var(--shadow-lg);
 }
 .profile-pill.open .profile-menu { display: block; animation: dropdownIn 0.2s var(--ease); }
+.profile-menu-email {
+  padding: 4px 18px 10px; font-size: 12px; color: var(--muted-2);
+  border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .profile-menu a {
   display: block; padding: 10px 18px; font-size: 13px; color: #d4d4d4;
   transition: color 0.15s, background 0.15s;
@@ -1183,11 +1133,9 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .top10-card { flex: 0 0 70%; min-width: 240px; }
   .top10-number { font-size: 130px; -webkit-text-stroke: 2px #4a4a4a; margin-right: -22px; }
 
-  /* Profile screen */
-  .profile-inner h1 { font-size: 36px; margin-bottom: 28px; }
-  .profile-list { gap: 18px; }
-  .avatar { width: 96px; height: 96px; font-size: 44px; }
-  .profile-card .name { font-size: 14px; }
+  /* Login screen */
+  .login-card { padding: 32px 22px; }
+  .login-logo { font-size: 28px; margin-bottom: 24px; }
 
   /* Modal */
   .modal-body {

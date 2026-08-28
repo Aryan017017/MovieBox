@@ -32,17 +32,11 @@ const YT = "https://www.youtube.com/embed/";
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
-const DEFAULT_PROFILES = [
-  { id: "p1", name: "Aryan",  color: "#e50914" },
-  { id: "p2", name: "Family", color: "#0080ff" },
-  { id: "p3", name: "Kids",   color: "#f5c518" },
-  { id: "p4", name: "Guest",  color: "#46d369" },
-];
-const PROFILE_COLORS = ["#e50914","#0080ff","#f5c518","#46d369","#9333ea","#ec4899","#06b6d4","#f97316","#84cc16","#64748b"];
-const STORAGE_PROFILES = "moviebox:profiles";
-let PROFILES = []; // populated after storage helpers below
-function saveProfiles() { saveJSON(STORAGE_PROFILES, PROFILES); }
-function profileInitial(p) { return (p.name || "?").trim().charAt(0).toUpperCase(); }
+// ---------- Auth / cloud account ----------
+firebase.initializeApp(FIREBASE_CONFIG);
+const fbAuth = firebase.auth();
+const fbDb = firebase.firestore();
+let currentUser = null; // firebase.User once signed in
 
 const GENRES_MOVIE = [
   { id: 28,    name: "Action" },
@@ -78,7 +72,7 @@ const STORAGE = {
   status: "moviebox:status",         // explicit status overrides { itemKey: "dropped" | "plan" }
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
-const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const saveJSON = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); scheduleCloudSync(); };
 let progressMap = {};
 let myList = [];
 let ratingsMap = {};
@@ -99,14 +93,79 @@ let achievements = {};
 let affinityActors = {};
 let affinityDirectors = {};
 let statusOverrides = {};
-let activeProfile = loadJSON(STORAGE.profile, null);
-PROFILES = loadJSON(STORAGE_PROFILES, DEFAULT_PROFILES);
-if (!Array.isArray(PROFILES) || PROFILES.length === 0) PROFILES = [...DEFAULT_PROFILES];
 
-// Per-profile storage keys
+// Per-account storage keys (namespaced by the signed-in Firebase user's uid)
 function profileStorageKey(base) {
-  return activeProfile?.id ? `${base}:${activeProfile.id}` : base;
+  return currentUser?.uid ? `${base}:${currentUser.uid}` : base;
 }
+
+// ===== Cloud sync (Firestore) — cross-device continuity =====
+// localStorage stays the fast, synchronous source of truth for the UI;
+// Firestore is a debounced mirror of it so other signed-in devices catch up.
+// A short debounce keeps this well under Firestore's free-tier write quota
+// even during active playback (progress saves fire every few seconds).
+let cloudSyncTimer = null;
+let cloudSyncDirty = false;
+let cloudApplyingRemote = false; // true while writing a remote snapshot locally, to avoid re-uploading it
+let cloudUnsubscribe = null;
+
+function scheduleCloudSync() {
+  if (!currentUser || cloudApplyingRemote) return;
+  cloudSyncDirty = true;
+  if (cloudSyncTimer) return;
+  cloudSyncTimer = setTimeout(() => { cloudSyncTimer = null; flushCloudSync(); }, 8000);
+}
+function collectUserLocalData() {
+  const suffix = `:${currentUser.uid}`;
+  const data = {};
+  for (const key of Object.keys(localStorage)) {
+    if (key.endsWith(suffix)) data[key] = localStorage.getItem(key);
+  }
+  return data;
+}
+async function flushCloudSync() {
+  if (!currentUser || !cloudSyncDirty) return;
+  cloudSyncDirty = false;
+  try {
+    await fbDb.collection("users").doc(currentUser.uid).set(
+      { data: collectUserLocalData(), updatedAt: Date.now() },
+      { merge: true }
+    );
+  } catch (e) { console.warn("Cloud sync failed:", e.message); }
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushCloudSync(); });
+window.addEventListener("beforeunload", flushCloudSync);
+
+async function pullCloudDataOnce() {
+  try {
+    const doc = await fbDb.collection("users").doc(currentUser.uid).get();
+    applyRemoteData(doc.data()?.data);
+  } catch (e) { console.warn("Cloud pull failed:", e.message); }
+}
+function applyRemoteData(data) {
+  if (!data) return;
+  cloudApplyingRemote = true;
+  for (const [key, value] of Object.entries(data)) localStorage.setItem(key, value);
+  cloudApplyingRemote = false;
+}
+function startCloudListener() {
+  cloudUnsubscribe?.();
+  cloudUnsubscribe = fbDb.collection("users").doc(currentUser.uid)
+    .onSnapshot(doc => {
+      // Ignore the instant local echo of our own pending write — only react
+      // to changes actually confirmed by the server (our own, or another device's).
+      if (doc.metadata.hasPendingWrites) return;
+      applyRemoteData(doc.data()?.data);
+      loadProfileData();
+      migrateEpisodeProgress();
+      route();
+    }, e => console.warn("Cloud listener error:", e.message));
+}
+function stopCloudListener() {
+  cloudUnsubscribe?.();
+  cloudUnsubscribe = null;
+}
+
 function loadProfileData() {
   progressMap = loadJSON(profileStorageKey(STORAGE.progress), {});
   myList = loadJSON(profileStorageKey(STORAGE.list), []);
@@ -129,23 +188,6 @@ function loadProfileData() {
   for (const [k, v] of Object.entries(progressMap)) {
     if (!v.isEpisode && v.updatedAt && v.updatedAt < thirtyDaysAgo && v.progress < 95) {
       dismissedMap[k] = true;
-    }
-  }
-  // One-time migration: copy legacy global data into the first profile that loads it
-  if (activeProfile?.id && Object.keys(progressMap).length === 0) {
-    const legacyP = loadJSON(STORAGE.progress, null);
-    if (legacyP && Object.keys(legacyP).length) {
-      progressMap = legacyP;
-      saveJSON(profileStorageKey(STORAGE.progress), progressMap);
-      localStorage.removeItem(STORAGE.progress);
-    }
-  }
-  if (activeProfile?.id && myList.length === 0) {
-    const legacyL = loadJSON(STORAGE.list, null);
-    if (legacyL && legacyL.length) {
-      myList = legacyL;
-      saveJSON(profileStorageKey(STORAGE.list), myList);
-      localStorage.removeItem(STORAGE.list);
     }
   }
 }
@@ -2091,7 +2133,7 @@ function exportCSV() {
 
 function exportJSON() {
   const data = {
-    profile: activeProfile,
+    account: currentUser?.email,
     progress: progressMap,
     myList,
     ratings: ratingsMap,
@@ -2101,7 +2143,7 @@ function exportJSON() {
     sessions: sessionsList,
     exportedAt: new Date().toISOString(),
   };
-  downloadFile(`moviebox-${activeProfile?.name || "profile"}-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), "application/json");
+  downloadFile(`moviebox-export-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), "application/json");
 }
 
 function downloadFile(name, content, type) {
@@ -3598,122 +3640,86 @@ window.addEventListener("scroll", () => {
   $("#navbar").classList.toggle("scrolled", window.scrollY > 20);
 });
 
-// ---------- Profile ----------
-let manageMode = false;
-let editingProfileId = null;
+// ---------- Auth screen ----------
+let authMode = "signin"; // "signin" | "signup"
 
-function renderProfileScreen() {
-  const list = $("#profile-list"); list.innerHTML = "";
-  PROFILES.forEach(p => {
-    const card = document.createElement("div");
-    card.className = "profile-card";
-    card.innerHTML = `
-      <div class="avatar" style="background:${p.color}">${escapeHTML(profileInitial(p))}</div>
-      <div class="name">${escapeHTML(p.name)}</div>
-      <button class="edit-pencil" title="Edit">✎</button>`;
-    card.addEventListener("click", (e) => {
-      if (e.target.classList.contains("edit-pencil") || manageMode) {
-        openProfileEdit(p);
-      } else {
-        selectProfile(p);
-      }
-    });
-    list.appendChild(card);
-  });
-  // Add-profile tile (max 6)
-  if (PROFILES.length < 6) {
-    const add = document.createElement("div");
-    add.className = "profile-card add-card";
-    add.innerHTML = `<div class="avatar">+</div><div class="name">Add Profile</div>`;
-    add.addEventListener("click", () => openProfileEdit(null));
-    list.appendChild(add);
-  }
+function showLoginScreen() {
+  stopCloudListener();
+  $("#app").classList.add("hidden");
+  $("#login-screen").classList.remove("hidden");
 }
-
-function openProfileEdit(profile) {
-  editingProfileId = profile?.id || null;
-  $("#profile-edit-title").textContent = profile ? "Edit Profile" : "Create Profile";
-  $("#profile-name-input").value = profile?.name || "";
-  $("#profile-edit-delete").style.display = (profile && PROFILES.length > 1) ? "" : "none";
-  // Color picker
-  const picker = $("#color-picker");
-  picker.innerHTML = "";
-  const currentColor = profile?.color || PROFILE_COLORS[0];
-  PROFILE_COLORS.forEach(c => {
-    const sw = document.createElement("div");
-    sw.className = "color-swatch" + (c === currentColor ? " active" : "");
-    sw.style.background = c;
-    sw.dataset.color = c;
-    sw.addEventListener("click", () => {
-      $$(".color-swatch", picker).forEach(s => s.classList.remove("active"));
-      sw.classList.add("active");
-    });
-    picker.appendChild(sw);
-  });
-  $("#profile-edit-modal").classList.remove("hidden");
-  setTimeout(() => $("#profile-name-input").focus(), 50);
+function showAuthError(msg) {
+  const el = $("#login-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
 }
-
-function closeProfileEdit() {
-  $("#profile-edit-modal").classList.add("hidden");
-  editingProfileId = null;
+function clearAuthError() {
+  $("#login-error").classList.add("hidden");
+  $("#login-error").textContent = "";
 }
-
-$("#profile-edit-save").addEventListener("click", () => {
-  const name = $("#profile-name-input").value.trim();
-  if (!name) { showToast("Name required"); return; }
-  const color = $(".color-swatch.active")?.dataset.color || PROFILE_COLORS[0];
-  if (editingProfileId) {
-    const p = PROFILES.find(x => x.id === editingProfileId);
-    if (p) { p.name = name; p.color = color; }
+$("#login-switch-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  authMode = authMode === "signin" ? "signup" : "signin";
+  clearAuthError();
+  if (authMode === "signup") {
+    $("#login-title").textContent = "Sign Up";
+    $("#login-submit").textContent = "Sign Up";
+    $("#login-switch-text").textContent = "Already have an account?";
+    $("#login-switch-link").textContent = "Sign in";
+    $("#login-password").setAttribute("autocomplete", "new-password");
   } else {
-    PROFILES.push({ id: "p" + Date.now(), name, color });
+    $("#login-title").textContent = "Sign In";
+    $("#login-submit").textContent = "Sign In";
+    $("#login-switch-text").textContent = "New to MovieBox?";
+    $("#login-switch-link").textContent = "Sign up now";
+    $("#login-password").setAttribute("autocomplete", "current-password");
   }
-  saveProfiles();
-  renderProfileScreen();
-  closeProfileEdit();
 });
-
-$("#profile-edit-delete").addEventListener("click", () => {
-  if (!editingProfileId || PROFILES.length <= 1) return;
-  if (!confirm("Delete this profile? Watch history and list won't be removed.")) return;
-  PROFILES = PROFILES.filter(p => p.id !== editingProfileId);
-  saveProfiles();
-  if (activeProfile?.id === editingProfileId) {
-    activeProfile = null;
-    localStorage.removeItem(STORAGE.profile);
+const AUTH_ERROR_MESSAGES = {
+  "auth/invalid-email": "That email address doesn't look right.",
+  "auth/user-not-found": "No account with that email. Try signing up instead.",
+  "auth/wrong-password": "Incorrect password.",
+  "auth/invalid-credential": "Incorrect email or password.",
+  "auth/email-already-in-use": "An account with that email already exists. Try signing in instead.",
+  "auth/weak-password": "Password must be at least 6 characters.",
+  "auth/too-many-requests": "Too many attempts — please wait a moment and try again.",
+  "auth/network-request-failed": "Network error — check your connection and try again.",
+};
+$("#login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearAuthError();
+  const email = $("#login-email").value.trim();
+  const password = $("#login-password").value;
+  const btn = $("#login-submit");
+  btn.disabled = true;
+  try {
+    if (authMode === "signup") {
+      await fbAuth.createUserWithEmailAndPassword(email, password);
+    } else {
+      await fbAuth.signInWithEmailAndPassword(email, password);
+    }
+    // onAuthStateChanged picks up from here
+  } catch (err) {
+    showAuthError(AUTH_ERROR_MESSAGES[err.code] || err.message);
+  } finally {
+    btn.disabled = false;
   }
-  renderProfileScreen();
-  closeProfileEdit();
 });
 
-$("#profile-edit-cancel").addEventListener("click", closeProfileEdit);
-$(".profile-edit-backdrop").addEventListener("click", closeProfileEdit);
-$("#profile-name-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("#profile-edit-save").click();
-  if (e.key === "Escape") closeProfileEdit();
-});
-
-$("#manage-profiles").addEventListener("click", () => {
-  manageMode = !manageMode;
-  document.body.classList.toggle("profile-manage-mode", manageMode);
-  $("#manage-profiles").textContent = manageMode ? "Done" : "Manage Profiles";
-});
-function selectProfile(p) {
-  activeProfile = p; saveJSON(STORAGE.profile, p);
+async function enterApp(user) {
+  currentUser = user;
+  await pullCloudDataOnce();
   loadProfileData();
   migrateEpisodeProgress();
-  // Apply profile-themed accent color
-  document.documentElement.style.setProperty("--profile-accent", p.color);
-  document.body.style.setProperty("--profile-glow", p.color + "33");
   checkBedtime();
-  manageMode = false; document.body.classList.remove("profile-manage-mode");
-  $("#manage-profiles").textContent = "Manage Profiles";
-  $("#profile-screen").classList.add("hidden");
+  startCloudListener();
+  $("#login-screen").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  $("#profile-avatar-mini").style.background = p.color;
-  $("#profile-avatar-mini").textContent = profileInitial(p);
-  $("#profile-avatar-mini").style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;`;
+  const initial = (user.email || "?").trim().charAt(0).toUpperCase();
+  const avatar = $("#profile-avatar-mini");
+  avatar.textContent = initial;
+  avatar.style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;background:var(--accent);`;
+  $("#profile-menu-email").textContent = user.email || "";
   route();
   maybeShowOnboarding();
   setTimeout(maybeShowResumePrompt, 1800);
@@ -3746,27 +3752,27 @@ $("#profile-pill").addEventListener("keydown", e => {
 document.addEventListener("click", e => {
   if (!e.target.closest("#profile-pill")) setProfileMenuOpen(false);
 });
-$("#switch-profile").addEventListener("click", e => {
+$("#logout-btn").addEventListener("click", async (e) => {
   e.preventDefault();
   setProfileMenuOpen(false);
-  $("#app").classList.add("hidden");
-  $("#profile-screen").classList.remove("hidden");
-  activeProfile = null;
-  localStorage.removeItem(STORAGE.profile);
+  await flushCloudSync();
+  await fbAuth.signOut();
 });
 $("#clear-data").addEventListener("click", e => {
   e.preventDefault();
-  if (confirm("Clear continue-watching and My List for this profile?")) {
+  if (confirm("Clear continue-watching and My List for this account?")) {
     progressMap = {}; myList = [];
-    saveProgress(); saveJSON(STORAGE.list, myList);
+    saveProgress(); saveMyList();
     route();
   }
   setProfileMenuOpen(false);
 });
 
 // ---------- Boot ----------
-renderProfileScreen();
-if (activeProfile) selectProfile(activeProfile);
+fbAuth.onAuthStateChanged(user => {
+  if (user) enterApp(user);
+  else { currentUser = null; showLoginScreen(); }
+});
 
 // PWA: register service worker (best effort) and self-update
 if ("serviceWorker" in navigator) {
