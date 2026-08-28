@@ -155,8 +155,15 @@ function applyRemoteData(data) {
 }
 function startCloudListener() {
   cloudUnsubscribe?.();
+  // onSnapshot always fires once immediately with the current doc — skip that
+  // first firing since enterApp() already loaded this data via
+  // pullCloudDataOnce() and rendered the page; only react to snapshots after
+  // that (a genuine remote change from this device's own confirmed write, or
+  // another device's update).
+  let firstSnapshot = true;
   cloudUnsubscribe = fbDb.collection("users").doc(currentUser.uid)
     .onSnapshot(doc => {
+      if (firstSnapshot) { firstSnapshot = false; return; }
       // Ignore the instant local echo of our own pending write — only react
       // to changes actually confirmed by the server (our own, or another device's).
       if (doc.metadata.hasPendingWrites) return;
@@ -260,7 +267,6 @@ const ACHIEVEMENTS = [
   { id: "rate10", icon: "⭐", title: "Critic",             desc: "Rated 10 titles",              check: (s) => s.ratingsCount >= 10 },
   { id: "rate50", icon: "📝", title: "Reviewer",           desc: "Rated 50 titles",              check: (s) => s.ratingsCount >= 50 },
   { id: "tag5",   icon: "🏷", title: "Organizer",          desc: "Used 5 different tags",        check: (s) => s.tagCount >= 5 },
-  { id: "anime5", icon: "🎌", title: "Otaku",              desc: "Finished 5 anime",             check: (s) => s.finishedAnime >= 5 },
   { id: "binge",  icon: "💥", title: "Binge Master",       desc: "4+ episodes in one session",   check: (s) => s.maxBinge >= 4 },
   { id: "night",  icon: "🌙", title: "Night Owl",          desc: "10 late-night sessions",       check: (s) => s.nightSessions >= 10 },
   { id: "morn",   icon: "☀️", title: "Early Bird",         desc: "10 morning sessions",          check: (s) => s.morningSessions >= 10 },
@@ -274,7 +280,6 @@ function computeAchievementStats() {
   const finished = entries.filter(([, v]) => v.progress >= 95).length;
   const finishedMovies = entries.filter(([, v]) => v.itemType === "movie" && v.progress >= 95).length;
   const finishedShows = entries.filter(([, v]) => v.itemType === "tv" && v.progress >= 95).length;
-  const finishedAnime = entries.filter(([, v]) => v.itemType === "anime" && v.progress >= 95).length;
   const totalEpisodes = eps.filter(v => v.progress >= 95).length;
   const rewatches = Object.keys(rewatchMap).filter(k => rewatchMap[k] >= 2).length;
   // Streak
@@ -285,12 +290,11 @@ function computeAchievementStats() {
   while (dayBucket.has(cur.getTime())) { streak++; cur.setDate(cur.getDate() - 1); }
   // Genres count
   const genres = new Set();
-  entries.forEach(([, v]) => { if (v.itemType === "anime") genres.add("Anime"); });
   // For movie/tv genres we'd need TMDB call - approximate from cached
   // Use ratings count + tags count
   return {
     totalHours: totalSecs / 3600,
-    finished, finishedMovies, finishedShows, finishedAnime,
+    finished, finishedMovies, finishedShows,
     totalEpisodes, rewatches, streak,
     genreCount: genres.size + Math.min(8, Math.round(entries.length / 5)), // rough
     ratingsCount: Object.keys(ratingsMap).length,
@@ -349,7 +353,6 @@ function showAchievementToast(a) {
 // ===== Actor/Director affinity =====
 async function trackAffinityForItem(item) {
   if (privacy.pauseProgress) return;
-  if (item.type === "anime") return;
   try {
     const credits = await tmdb(`/${item.type}/${item.id}/credits`).catch(() => null);
     if (!credits) return;
@@ -407,7 +410,7 @@ function migrateEpisodeProgress() {
   let changed = false;
   for (const [k, v] of Object.entries(progressMap)) {
     if (!v || v.isEpisode) continue;
-    if ((v.itemType === "tv" || v.itemType === "anime") && v.episode) {
+    if (v.itemType === "tv" && v.episode) {
       const epKey = `${v.itemType}:${v.itemId}:s${v.season || 1}:e${v.episode}`;
       if (!progressMap[epKey]) {
         progressMap[epKey] = {
@@ -437,53 +440,6 @@ async function tmdb(path, params = {}) {
   const json = await r.json();
   tmdbCache.set(key, json);
   return json;
-}
-
-// ---------- AniList ----------
-function normalizeAnilist(m) {
-  return {
-    id: m.id, type: "anime",
-    title: m.title.english || m.title.romaji,
-    poster: m.coverImage.extraLarge || m.coverImage.large,
-    backdrop: m.bannerImage || m.coverImage.extraLarge,
-    overview: (m.description || "").replace(/<[^>]+>/g, ""),
-    year: m.startDate?.year,
-    rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : null,
-    episodes: m.episodes,
-    isMovie: m.format === "MOVIE",
-    genres: m.genres,
-    trailerKey: m.trailer?.site === "youtube" ? m.trailer.id : null,
-  };
-}
-const ANILIST_FRAG = `
-  id title { romaji english } coverImage { large extraLarge }
-  bannerImage description(asHtml: false) format episodes averageScore
-  startDate { year } genres trailer { id site }`;
-async function anilistQuery(query, variables = {}) {
-  const r = await fetch("https://graphql.anilist.co", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
-  return (await r.json()).data;
-}
-async function anilistTrending() {
-  const d = await anilistQuery(`query { Page(perPage:20){ media(type:ANIME, sort:TRENDING_DESC, format_in:[TV,MOVIE]){${ANILIST_FRAG}} } }`);
-  return d.Page.media.map(normalizeAnilist);
-}
-async function anilistTopRated() {
-  const d = await anilistQuery(`query { Page(perPage:20){ media(type:ANIME, sort:SCORE_DESC, format_in:[TV,MOVIE]){${ANILIST_FRAG}} } }`);
-  return d.Page.media.map(normalizeAnilist);
-}
-async function anilistSeasonal() {
-  const month = new Date().getMonth() + 1;
-  const season = month <= 3 ? "WINTER" : month <= 6 ? "SPRING" : month <= 9 ? "SUMMER" : "FALL";
-  const year = new Date().getFullYear();
-  const d = await anilistQuery(`query($s:MediaSeason,$y:Int){ Page(perPage:20){ media(type:ANIME, season:$s, seasonYear:$y, sort:POPULARITY_DESC){${ANILIST_FRAG}} } }`, { s: season, y: year });
-  return { items: d.Page.media.map(normalizeAnilist), label: `${season[0] + season.slice(1).toLowerCase()} ${year}` };
-}
-async function anilistByGenre(genre) {
-  const d = await anilistQuery(`query($g:String){ Page(perPage:20){ media(type:ANIME, genre:$g, sort:POPULARITY_DESC){${ANILIST_FRAG}} } }`, { g: genre });
-  return d.Page.media.map(normalizeAnilist);
 }
 
 // ---------- Normalizers ----------
@@ -645,7 +601,6 @@ function makeCard(item, opts = {}) {
   if (opts.showProgress && p?.progress) {
     let epLabel = "";
     if (item.type === "tv" && p.season && p.episode) epLabel = `S${p.season}:E${p.episode}`;
-    else if (item.type === "anime" && p.episode) epLabel = `Ep ${p.episode}`;
     let leftLabel = "";
     if (p.duration && p.timestamp) {
       const min = Math.max(1, Math.ceil((p.duration - p.timestamp) / 60));
@@ -882,15 +837,8 @@ async function renderHero(item) {
 
 // "Show • Action • 2026 • 2 Seasons • TV-PG" style compact hero metadata line.
 async function fetchHeroMetaLine(item) {
-  const typeLabel = item.type === "movie" ? "Movie" : item.type === "tv" ? "Show" : "Anime";
+  const typeLabel = item.type === "movie" ? "Movie" : "Show";
   const parts = [typeLabel];
-  if (item.type === "anime") {
-    if (item.genres?.[0]) parts.push(item.genres[0]);
-    if (item.year) parts.push(String(item.year));
-    if (!item.isMovie && item.episodes) parts.push(`${item.episodes} Episode${item.episodes > 1 ? "s" : ""}`);
-    parts.push(pseudoAge(item));
-    return parts;
-  }
   try {
     const details = await tmdb(`/${item.type}/${item.id}`);
     if (details.genres?.[0]?.name) parts.push(details.genres[0].name);
@@ -903,7 +851,6 @@ async function fetchHeroMetaLine(item) {
 }
 
 async function fetchTitleLogo(item) {
-  if (item.type === "anime") return null;
   try {
     const path = item.type === "tv" ? `/tv/${item.id}/images` : `/movie/${item.id}/images`;
     // override include_image_language so we actually get logos
@@ -927,7 +874,6 @@ async function fetchTitleLogo(item) {
 }
 
 async function fetchTrailerKey(item) {
-  if (item.type === "anime") return item.trailerKey;
   const path = item.type === "tv" ? `/tv/${item.id}/videos` : `/movie/${item.id}/videos`;
   const data = await tmdb(path);
   const trailer = data.results.find(v => v.site === "YouTube" && v.type === "Trailer") ||
@@ -972,12 +918,11 @@ async function showHome() {
   rows.innerHTML = ""; for (let i = 0; i < 4; i++) rows.appendChild(skeletonRow());
   try {
     const regionParam = { region: userRegion };
-    const [trending, popMovies, popTV, topMovies, anime, trendingDay, trendingRegion] = await Promise.all([
+    const [trending, popMovies, popTV, topMovies, trendingDay, trendingRegion] = await Promise.all([
       tmdb("/trending/all/week"),
       tmdb("/movie/popular", regionParam),
       tmdb("/tv/popular"),
       tmdb("/movie/top_rated"),
-      anilistTrending().catch(() => []),
       tmdb("/trending/all/day"),
       tmdb("/movie/popular", regionParam).catch(() => null),
     ]);
@@ -1008,7 +953,6 @@ async function showHome() {
     ));
     rows.appendChild(renderRow("Popular Movies", popMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     rows.appendChild(renderRow("Popular TV Shows", popTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
-    rows.appendChild(renderRow("Trending Anime", anime));
     rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
 
     // Genre rows (lazy after main content)
@@ -1029,10 +973,10 @@ async function getNamedRecommendations() {
   const cw = getContinueWatching().slice(0, 2);
   cw.forEach(it => {
     const k = itemKey(it);
-    if (!seenSeed.has(k) && it.type !== "anime") { seenSeed.add(k); seeds.push(it); }
+    if (!seenSeed.has(k)) { seenSeed.add(k); seeds.push(it); }
   });
   // Add one from My List
-  const fromList = myList.find(it => !seenSeed.has(itemKey(it)) && it.type !== "anime");
+  const fromList = myList.find(it => !seenSeed.has(itemKey(it)));
   if (fromList) { seenSeed.add(itemKey(fromList)); seeds.push(fromList); }
   if (!seeds.length) return [];
 
@@ -1062,26 +1006,6 @@ async function showCategory(type, genreId = null) {
   const rows = $("#rows");
   rows.innerHTML = ""; for (let i = 0; i < 3; i++) rows.appendChild(skeletonRow());
   try {
-    if (type === "anime") {
-      const [trending, topRated, seasonal] = await Promise.all([
-        anilistTrending(),
-        anilistTopRated().catch(() => []),
-        anilistSeasonal().catch(() => ({ items: [], label: "" })),
-      ]);
-      renderHero(trending.find(i => i.backdrop) || trending[0]);
-      rows.innerHTML = "";
-      rows.appendChild(renderRow("Trending Now", trending));
-      if (seasonal.items.length) rows.appendChild(renderRow(`This Season · ${seasonal.label}`, seasonal.items));
-      rows.appendChild(renderRow(`Top 10 Anime`, topRated.slice(0, 10), { top10: true }));
-      rows.appendChild(renderRow("Highest Rated", topRated));
-      // Genre rows (lazy)
-      for (const g of ["Action", "Romance", "Comedy", "Sci-Fi", "Fantasy"]) {
-        anilistByGenre(g).then(items => {
-          if (items.length) rows.appendChild(renderRow(g, items));
-        }).catch(() => {});
-      }
-      return;
-    }
     // Genre filter mode: show grid of that genre only
     if (genreId) {
       const data = await tmdb(`/discover/${type}`, { with_genres: genreId, sort_by: "popularity.desc" });
@@ -1320,7 +1244,6 @@ function renderHistoryGroup(grid, entries) {
     const finishedLabel = v.progress >= 95 ? "Finished" : (pct + "% watched");
     let epLabel = "";
     if (v.itemType === "tv" && v.season && v.episode) epLabel = `S${v.season} · E${v.episode}`;
-    else if (v.itemType === "anime" && v.episode) epLabel = `Episode ${v.episode}`;
     else if (v.itemType === "movie") epLabel = "Movie";
     let leftLabel = "";
     if (v.duration && v.timestamp && v.progress < 95) {
@@ -1525,7 +1448,7 @@ function showLibrary(tab) {
     cell.appendChild(makeCard(item, { showProgress: tab === "watching" }));
     const meta = document.createElement("div");
     meta.className = "search-meta";
-    let label = item.type === "tv" ? "Series" : item.type === "anime" ? "Anime" : "Movie";
+    let label = item.type === "tv" ? "Series" : "Movie";
     if (v?.season && v?.episode) label += ` · S${v.season}E${v.episode}`;
     meta.innerHTML = `<span class="type-pill">${label}</span><span>${item.year || ""}</span>`;
     const title = document.createElement("div");
@@ -1772,7 +1695,6 @@ async function showStats() {
   // Type breakdown
   const movies = entries.filter(([, v]) => v.itemType === "movie").length;
   const shows = entries.filter(([, v]) => v.itemType === "tv").length;
-  const anime = entries.filter(([, v]) => v.itemType === "anime").length;
 
   // Most watched (by accumulated timestamp)
   const accBy = {};
@@ -1797,7 +1719,6 @@ async function showStats() {
       <div class="stat-card"><div class="stat-card-icon">⏱</div><div class="stat-card-num">${inProgress}</div><div class="stat-card-label">In Progress</div></div>
       <div class="stat-card"><div class="stat-card-icon">🎬</div><div class="stat-card-num">${movies}</div><div class="stat-card-label">Movies</div></div>
       <div class="stat-card"><div class="stat-card-icon">📺</div><div class="stat-card-num">${shows}</div><div class="stat-card-label">TV Shows</div></div>
-      <div class="stat-card"><div class="stat-card-icon">🎌</div><div class="stat-card-num">${anime}</div><div class="stat-card-label">Anime</div></div>
       <div class="stat-card"><div class="stat-card-icon">🎯</div><div class="stat-card-num">${finishRate}%</div><div class="stat-card-label">Finish Rate</div></div>
     </div>
     ${topShow ? `
@@ -2032,11 +1953,6 @@ async function computeGenreBreakdown(entries) {
     const episodeSecs = Object.entries(progressMap).filter(([ek, ev]) => ev.isEpisode && ek.startsWith(k + ":s")).reduce((a, [, ev]) => a + (ev.timestamp || 0), 0);
     const secs = (episodeSecs > 0 ? 0 : (v.timestamp || 0)) + episodeSecs;
     if (!secs) continue;
-    if (v.itemType === "anime") {
-      const tagName = "Anime";
-      acc[tagName] = (acc[tagName] || 0) + secs;
-      continue;
-    }
     try {
       const detail = await tmdb(`/${v.itemType}/${v.itemId}`).catch(() => null);
       const genres = (detail?.genres || []).slice(0, 2).map(g => g.name);
@@ -2218,7 +2134,6 @@ function showYearRecap() {
   const yearFinished = yearEntries.filter(([, v]) => v.progress >= 95).length;
   const yearMovies = yearEntries.filter(([, v]) => v.itemType === "movie").length;
   const yearShows = yearEntries.filter(([, v]) => v.itemType === "tv").length;
-  const yearAnime = yearEntries.filter(([, v]) => v.itemType === "anime").length;
   const allEpsFinished = yearEpisodes.filter(v => v.progress >= 95).length;
 
   // Top title by accumulated time this year
@@ -2241,7 +2156,7 @@ function showYearRecap() {
           <div><div class="rs-num">${yearFinished}</div><div class="rs-label">titles finished</div></div>
           <div><div class="rs-num">${allEpsFinished}</div><div class="rs-label">episodes watched</div></div>
           <div><div class="rs-num">${yearMovies}</div><div class="rs-label">movies</div></div>
-          <div><div class="rs-num">${yearShows + yearAnime}</div><div class="rs-label">shows</div></div>
+          <div><div class="rs-num">${yearShows}</div><div class="rs-label">shows</div></div>
         </div>
         ${topTitle ? `
           <div class="recap-divider"></div>
@@ -2301,7 +2216,6 @@ function maybeShowResumePrompt() {
   prompt.className = "resume-prompt";
   let ep = "";
   if (v.itemType === "tv" && v.season && v.episode) ep = `S${v.season} · E${v.episode}`;
-  else if (v.itemType === "anime" && v.episode) ep = `Episode ${v.episode}`;
   let left = "";
   if (v.duration && v.timestamp) {
     const mins = Math.max(1, Math.ceil((v.duration - v.timestamp) / 60));
@@ -2392,7 +2306,7 @@ function showMyList() {
     cell.appendChild(makeCard(it));
     const meta = document.createElement("div");
     meta.className = "search-meta";
-    meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : it.type === "anime" ? "Anime" : "Movie"}</span><span>${it.year || ""}</span>`;
+    meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span>`;
     const title = document.createElement("div");
     title.className = "search-title";
     title.textContent = it.title;
@@ -2782,39 +2696,6 @@ async function openModal(item, opts = {}) {
         await loadEpisodes(item.id, +sel.value);
       }
     } catch {}
-  } else if (item.type === "anime") {
-    if (!item.isMovie && item.episodes && item.episodes > 1) {
-      $("#episode-section").classList.remove("hidden");
-      const sel = $("#season-select");
-      sel.innerHTML = `<option value="1">Episodes</option>`;
-      sel.disabled = true;
-      const list = $("#episode-list"); list.innerHTML = "";
-      const last = progressMap[progressKey(item)];
-      for (let i = 1; i <= item.episodes; i++) {
-        const ep = document.createElement("div");
-        const isCurrent = last?.episode === i;
-        // Per-episode progress lookup (anime always season=1)
-        const epProg = progressMap[episodeProgressKey(item, 1, i)];
-        const epPct = epProg?.progress || (isCurrent ? last?.progress : 0) || 0;
-        const isFinished = epPct >= 95;
-        ep.className = "episode-item" + (isFinished ? " ep-finished" : "") + (isCurrent ? " ep-current" : "");
-        let barHTML = "";
-        if (isFinished) {
-          barHTML = `<div class="ep-progress ep-progress-done"><div style="width:100%"></div></div><div class="ep-watched-tick">✓</div>`;
-        } else if (epPct > 1) {
-          barHTML = `<div class="ep-progress"><div style="width:${Math.min(100, Math.round(epPct))}%"></div></div>`;
-        }
-        ep.innerHTML = `
-          <div class="episode-num">${i}</div>
-          <div class="episode-thumb" style="background-image:url('${item.poster || ""}')">${barHTML}</div>
-          <div class="episode-info">
-            <div class="ep-head"><span class="ep-title">Episode ${i}</span></div>
-            <div class="ep-overview"></div>
-          </div>`;
-        ep.addEventListener("click", () => startPlayer(item, { episode: i }));
-        list.appendChild(ep);
-      }
-    }
   }
 
   if (opts.autoplay) startPlayer(item);
@@ -2919,33 +2800,17 @@ function computeNextEpisode(item, ctx) {
       };
     }
   }
-  if (item.type === "anime" && !item.isMovie && item.episodes && ctx.episode < item.episodes) {
-    return {
-      item, ctx: { episode: ctx.episode + 1 },
-      label: `Episode ${ctx.episode + 1}`,
-      epName: `Episode ${ctx.episode + 1}`,
-      epOverview: "",
-      epThumb: item.poster || item.backdrop || "",
-      seasonEp: `Ep ${ctx.episode + 1}`,
-    };
-  }
   return null;
 }
 
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
-  // Smart resume: if user pressed main Play (no ctx) on TV/anime and last episode was finished, jump to next
+  // Smart resume: if user pressed main Play (no ctx) on TV and last episode was finished, jump to next
   const last = progressMap[progressKey(item)];
-  if ((item.type === "tv" || item.type === "anime") && !ctx.episode && last) {
+  if (item.type === "tv" && !ctx.episode && last) {
     if (last.progress >= 95) {
       // Find next episode after last watched (s/e+1)
-      if (item.type === "anime") {
-        const next = (last.episode || 0) + 1;
-        if (item.episodes && next <= item.episodes) ctx = { episode: next };
-        else ctx = { episode: 1 }; // wrap to start
-      } else {
-        // TV: try same season +1, fallback to s+1 e1
-        ctx = { season: last.season || 1, episode: (last.episode || 0) + 1 };
-      }
+      // TV: try same season +1, fallback to s+1 e1
+      ctx = { season: last.season || 1, episode: (last.episode || 0) + 1 };
       seekOffsetSec = 0; // start fresh
     } else if (last.season && last.episode) {
       // Resume same episode
@@ -2953,7 +2818,7 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
     }
   }
   // Smart resume: if user is <30s in, restart from 0
-  const epLast = (item.type === "tv" || item.type === "anime") && ctx.episode
+  const epLast = item.type === "tv" && ctx.episode
     ? progressMap[episodeProgressKey(item, ctx.season || 1, ctx.episode)]
     : last;
   if (epLast && epLast.timestamp && epLast.timestamp < 30 && seekOffsetSec == null) {
@@ -3072,7 +2937,7 @@ let lastTimestamp = 0;
 function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
   // Per-episode seek if applicable, else show-level
   let last;
-  if ((item.type === "tv" || item.type === "anime") && ctx.episode) {
+  if (item.type === "tv" && ctx.episode) {
     last = progressMap[episodeProgressKey(item, ctx.season || 1, ctx.episode)] || progressMap[progressKey(item)];
   } else {
     last = progressMap[progressKey(item)];
@@ -3092,24 +2957,21 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
     params.set("nextbutton", "true");
     let path;
     if (item.type === "movie") path = `/movie/${item.id}`;
-    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    else path = item.isMovie ? `/anime/${item.id}` : `/anime/${item.id}/${ctx.episode || 1}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
     return `${PLAYER_BASE}${path}?${params.toString()}`;
   }
 
   if (provider === "vidsrc") {
     let path;
-    if (item.type === "movie" || (item.type === "anime" && item.isMovie)) path = `/movie/${item.id}`;
-    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    else path = `/anime/${item.id}/${ctx.episode || 1}`;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
     return `${PLAYER_BASE}${path}`;
   }
 
   if (provider === "embedsu") {
     let path;
-    if (item.type === "movie" || (item.type === "anime" && item.isMovie)) path = `/movie/${item.id}`;
-    else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    else path = `/anime/${item.id}/${ctx.episode || 1}`;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
     return `${PLAYER_BASE}${path}`;
   }
 
@@ -3124,8 +2986,7 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
 
   let path;
   if (item.type === "movie") path = `/movie/${item.id}`;
-  else if (item.type === "tv") path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-  else if (item.type === "anime") path = item.isMovie ? `/anime/${item.id}` : `/anime/${item.id}/${ctx.episode || 1}`;
+  else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
   return `${PLAYER_BASE}${path}?${params.toString()}`;
 }
 
@@ -3177,9 +3038,6 @@ $("#hero-play-btn").addEventListener("click", () => {
   if (currentItem.type === "tv") {
     const last = progressMap[progressKey(currentItem)];
     startPlayer(currentItem, { season: last?.season || 1, episode: last?.episode || 1 });
-  } else if (currentItem.type === "anime" && !currentItem.isMovie) {
-    const last = progressMap[progressKey(currentItem)];
-    startPlayer(currentItem, { episode: last?.episode || 1 });
   } else startPlayer(currentItem);
 });
 
@@ -3264,7 +3122,7 @@ window.addEventListener("message", (event) => {
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
   };
   // Per-episode progress tracking (Netflix-style: every watched episode keeps its own bar)
-  if ((currentItem.type === "tv" || currentItem.type === "anime") && episode) {
+  if (currentItem.type === "tv" && episode) {
     const epKey = episodeProgressKey(currentItem, season || 1, episode);
     progressMap[epKey] = {
       progress, timestamp, duration,
@@ -3278,7 +3136,7 @@ window.addEventListener("message", (event) => {
 
   // ----- Skip Intro & Up Next overlays -----
   lastTimestamp = timestamp;
-  const isEpisodeContent = playingItem && (playingItem.type === "tv" || (playingItem.type === "anime" && !playingItem.isMovie));
+  const isEpisodeContent = playingItem && playingItem.type === "tv";
   // Skip Intro: show during 5s..120s of episode runtime (and only briefly)
   if (isEpisodeContent) {
     if (timestamp >= 5 && timestamp <= 120) {
@@ -3318,10 +3176,10 @@ document.addEventListener("fullscreenchange", () => {
 function progressKey(item) { return `${item.type}:${item.id}`; }
 function episodeProgressKey(item, season, episode) { return `${item.type}:${item.id}:s${season}:e${episode}`; }
 // A show-level progress entry's `timestamp` is just the playback position of
-// the last-watched episode. For TV/anime with per-episode tracking, that same
+// the last-watched episode. For TV with per-episode tracking, that same
 // position is already represented by an `.isEpisode` entry, so summing both
-// double-counts it. Movies (and anime movies) never get per-episode entries,
-// so their own timestamp remains the only source for them.
+// double-counts it. Movies never get per-episode entries, so their own
+// timestamp remains the only source for them.
 function hasEpisodeTracking(v) {
   // Per-episode entries don't carry itemType/itemId of their own — the show
   // they belong to is only encoded in their progressMap key (see
@@ -3334,8 +3192,8 @@ async function getRecommendedForYou() {
   const seeds = [];
   const seen = new Set();
   const cw = getContinueWatching().slice(0, 3);
-  cw.forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "anime") { seen.add(k); seeds.push(it); } });
-  myList.slice(-3).forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "anime") { seen.add(k); seeds.push(it); } });
+  cw.forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k)) { seen.add(k); seeds.push(it); } });
+  myList.slice(-3).forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k)) { seen.add(k); seeds.push(it); } });
   if (!seeds.length) return [];
 
   const recs = new Map(); // key -> { item, score }
@@ -3424,7 +3282,6 @@ async function route() {
     if (parts[1] === "genre" && parts[2]) p = showCategory("tv", +parts[2]);
     else p = showCategory("tv");
   }
-  else if (parts[0] === "anime") p = showCategory("anime");
   else if (parts[0] === "new") p = showNewPopular();
   else if (parts[0] === "list") { showMyList(); p = Promise.resolve(); }
   else if (parts[0] === "stats") { p = showStats(); }
@@ -3447,27 +3304,6 @@ async function route() {
 
 async function openTitleByRoute(type, id) {
   try {
-    if (type === "anime") {
-      const r = await fetch("https://graphql.anilist.co", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: `query($id:Int){Media(id:$id,type:ANIME){id title{romaji english} coverImage{large extraLarge} bannerImage description(asHtml:false) format episodes averageScore startDate{year} genres trailer{id site}}}`, variables: { id: +id } }),
-      });
-      const d = (await r.json()).data.Media;
-      const item = {
-        id: d.id, type: "anime",
-        title: d.title.english || d.title.romaji,
-        poster: d.coverImage.extraLarge || d.coverImage.large,
-        backdrop: d.bannerImage || d.coverImage.extraLarge,
-        overview: (d.description || "").replace(/<[^>]+>/g, ""),
-        year: d.startDate?.year,
-        rating: d.averageScore ? (d.averageScore / 10).toFixed(1) : null,
-        episodes: d.episodes,
-        isMovie: d.format === "MOVIE",
-        genres: d.genres,
-        trailerKey: d.trailer?.site === "youtube" ? d.trailer.id : null,
-      };
-      return openModal(item);
-    }
     const data = await tmdb(`/${type}/${id}`);
     const item = normalizeTMDB({
       id: data.id, media_type: type,
@@ -3537,7 +3373,6 @@ $$("#navbar [data-nav]").forEach(a => {
     if (nav === "home") navTo("#/");
     else if (nav === "movies") navTo("#/movies");
     else if (nav === "tv") navTo("#/tv");
-    else if (nav === "anime") navTo("#/anime");
     else if (nav === "new") navTo("#/new");
     else if (nav === "mylist") navTo("#/list");
     else if (nav === "history") { setProfileMenuOpen(false); navTo("#/history"); }
