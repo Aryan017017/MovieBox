@@ -5,7 +5,7 @@ const TMDB_API_KEY = "ebc17fdd2c491ffd1d0cbac7000be592";
 // YouTube Data API v3 key — get one free at console.cloud.google.com
 // (APIs & Services > Library > enable "YouTube Data API v3" > Credentials).
 // Leave "" to disable the YouTube rows entirely.
-const YOUTUBE_API_KEY = "";
+const YOUTUBE_API_KEY = "AIzaSyAKKU-KovcZzcvcXtUhuoUEsYBndxAOfjU";
 // Each entry pulls from that channel's "uploads" playlist (its full upload
 // history) unless an explicit playlistId is given, in which case that exact
 // playlist is used instead (e.g. a specific show/podcast playlist rather
