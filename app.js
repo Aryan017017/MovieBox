@@ -2427,6 +2427,10 @@ let currentItem = null;
 let modalMuted = true;
 let currentSeason = null;
 let modalDetails = null;
+// The hash to restore when the modal is closed via our own UI (× / backdrop /
+// Escape) — set once per "session" of opening a title, not overwritten by
+// navigating between titles while a modal is already open.
+let modalPreviousHash = null;
 
 function renderTagsAndJournal(item) {
   const container = $(".modal-info-main");
@@ -2590,7 +2594,10 @@ async function openModal(item, opts = {}) {
   // closes the modal instead of leaving the site — every entry point
   // (card click, hero, search result, etc.) funnels through here.
   const titleHash = `#/title/${item.type}/${item.id}`;
-  if (location.hash !== titleHash) history.pushState(null, "", titleHash);
+  if (location.hash !== titleHash) {
+    if (!location.hash.startsWith("#/title/")) modalPreviousHash = location.hash;
+    history.pushState(null, "", titleHash);
+  }
   currentItem = item;
   modalDetails = null;
   $("#modal").classList.remove("hidden");
@@ -3095,9 +3102,15 @@ function closeModal() {
   if (heroIframe && heroIframe.dataset.src && !heroIframe.src) heroIframe.src = heroIframe.dataset.src;
 }
 function closeModalNav() {
-  // If we're on a title route, navigate away (back) so URL stays in sync
-  if (location.hash.startsWith("#/title/")) history.back();
-  else closeModal();
+  // Close immediately rather than relying on history.back() to do it —
+  // that API has proven unreliable across browsers (sometimes needing two
+  // calls, sometimes not firing at all in standalone/PWA contexts on iOS).
+  // Our own close controls must not depend on it succeeding.
+  closeModal();
+  if (location.hash.startsWith("#/title/")) {
+    history.replaceState(null, "", modalPreviousHash || "#/");
+  }
+  modalPreviousHash = null;
 }
 $(".modal-close").addEventListener("click", closeModalNav);
 $(".modal-backdrop").addEventListener("click", closeModalNav);
@@ -3417,6 +3430,7 @@ function closeModalSilent() {
   $(".modal-body").classList.remove("playing");
   document.body.style.overflow = "";
   currentItem = null;
+  modalPreviousHash = null;
   // End session
   if (currentSession) {
     const dur = Date.now() - currentSession.start;
@@ -3435,6 +3449,10 @@ function closeModalSilent() {
 }
 
 window.addEventListener("hashchange", route);
+// Belt-and-suspenders: popstate is the more direct signal that history
+// navigation happened (back/forward). route() is idempotent against the
+// current hash, so a redundant call alongside hashchange is harmless.
+window.addEventListener("popstate", route);
 
 // ---------- Nav ----------
 function setMobileNavOpen(open) {
