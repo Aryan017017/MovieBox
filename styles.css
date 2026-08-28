@@ -242,6 +242,16 @@ button { font-family: inherit; }
   z-index: 2;
   animation: slideUp 0.8s var(--ease);
 }
+/* Once the trailer's been playing a few seconds, ease the title/description
+   out of the way so the video gets the focus — Netflix does the same. */
+.hero-content .hero-title-slot,
+.hero-content p {
+  transition: opacity 1.5s var(--ease-soft);
+}
+.hero-content.trailer-active .hero-title-slot,
+.hero-content.trailer-active p {
+  opacity: 0; pointer-events: none;
+}
 .hero-content h1 {
   font-size: 64px; font-weight: 800; margin-bottom: 18px;
   letter-spacing: -0.03em; line-height: 1.05;

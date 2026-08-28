@@ -813,6 +813,7 @@ function skeletonRow() {
 // ---------- Hero (with auto-trailer) ----------
 let heroMuted = true;
 let heroItem = null;
+let heroFadeTimer = null;
 let cardMuted = true;
 
 async function renderHero(item) {
@@ -865,6 +866,16 @@ async function renderHero(item) {
     if (key) {
       const muteParam = heroMuted ? 1 : 0;
       trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      // The hero trailer is a passive background, not something to click/hover
+      // into — this also stops the browser's own hover media controls from
+      // ever appearing, since those only show up on actual pointer interaction.
+      trailerEl.style.pointerEvents = "none";
+      // Let the trailer play a few seconds before easing the title/description
+      // out of the way, Netflix-style.
+      clearTimeout(heroFadeTimer);
+      heroFadeTimer = setTimeout(() => {
+        if (heroItem === item) $("#hero-content").classList.add("trailer-active");
+      }, 4000);
     }
   } catch {}
 }
@@ -934,6 +945,7 @@ $("#mute-btn").addEventListener("click", () => {
 function stopHeroTrailer() {
   $("#hero-trailer").innerHTML = "";
   heroItem = null;
+  clearTimeout(heroFadeTimer);
 }
 
 // Pause hero audio when scrolled out of view
@@ -2607,42 +2619,6 @@ function renderRatingButtons(item) {
   });
 }
 
-function renderSeasonProgressIfApplicable(item) {
-  const container = $(".modal-info-main");
-  if (!container) return;
-  container.querySelectorAll(".season-progress-bars").forEach(n => n.remove());
-  if (item.type !== "tv") return;
-  // Async fetch seasons, count episodes vs watched per-episode entries
-  setTimeout(async () => {
-    try {
-      const details = modalDetails || (await tmdb(`/tv/${item.id}`));
-      if (currentItem !== item) return;
-      const seasons = (details.seasons || []).filter(s => s.season_number > 0 && s.episode_count > 0);
-      if (!seasons.length) return;
-      const wrap = document.createElement("div");
-      wrap.className = "season-progress-bars";
-      wrap.innerHTML = `<div class="season-progress-title">Your progress</div>`;
-      seasons.forEach(s => {
-        let watched = 0;
-        for (let e = 1; e <= s.episode_count; e++) {
-          const ep = progressMap[episodeProgressKey(item, s.season_number, e)];
-          if (ep && ep.progress >= 95) watched++;
-        }
-        const pct = Math.round((watched / s.episode_count) * 100);
-        const isDone = watched === s.episode_count;
-        const row = document.createElement("div");
-        row.className = "season-progress-row" + (isDone ? " done" : "");
-        row.innerHTML = `
-          <span class="sp-label">S${s.season_number}</span>
-          <div class="sp-bar"><div style="width:${pct}%"></div></div>
-          <span class="sp-count">${watched}/${s.episode_count}${isDone ? " ✓" : ""}</span>`;
-        wrap.appendChild(row);
-      });
-      container.appendChild(wrap);
-    } catch {}
-  }, 0);
-}
-
 function renderNewEpisodeBadge(item) {
   const titleEl = $("#modal-title");
   document.querySelectorAll(".new-episode-badge").forEach(n => n.remove());
@@ -2713,7 +2689,6 @@ async function openModal(item, opts = {}) {
   $("#similar-grid").innerHTML = "";
   updateListButton();
   renderRatingButtons(item);
-  renderSeasonProgressIfApplicable(item);
   renderNewEpisodeBadge(item);
 
   // Trailer in modal hero
