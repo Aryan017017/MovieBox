@@ -155,6 +155,10 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .nav-left { display: flex; align-items: center; gap: 32px; }
+.nav-hamburger {
+  display: none; background: transparent; border: 0; color: #fff;
+  font-size: 22px; cursor: pointer; padding: 4px 8px; line-height: 1;
+}
 .logo {
   color: var(--accent); font-weight: 400; font-size: 30px; letter-spacing: 2px;
   font-family: "Bebas Neue", sans-serif;
@@ -165,6 +169,7 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
 .nav-left nav a {
   color: var(--text-dim); font-size: 14px; font-weight: 500;
   transition: color 0.2s; position: relative;
+  white-space: nowrap; flex-shrink: 0;
 }
 .nav-left nav a:hover { color: var(--muted); }
 .nav-left nav a.active { color: #fff; font-weight: 600; }
@@ -223,7 +228,8 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
 }
 .suggest-empty { padding: 20px; text-align: center; color: var(--muted); font-size: 14px; }
 
-.profile-pill { position: relative; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.profile-pill { position: relative; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 4px; }
+.profile-pill:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 .profile-avatar-mini { width: 32px; height: 32px; border-radius: 6px; transition: transform 0.2s; }
 .profile-pill:hover .profile-avatar-mini { transform: scale(1.05); }
 .caret { color: #fff; font-size: 10px; transition: transform 0.3s var(--ease); }
@@ -417,6 +423,7 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: all 0.15s;
+  border: 0; padding: 0; font-family: inherit;
 }
 .card-info .play-mini {
   background: #fff; color: #000; font-size: 12px;
@@ -712,6 +719,7 @@ body.profile-manage-mode .profile-manage { color: #fff; border-color: #fff; }
   transition: border-color 0.2s;
 }
 .season-pill:hover { border-color: #888; }
+.season-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 .episode-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #2a2a2a; }
 .episode-item {
@@ -1084,22 +1092,37 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .footer-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* ================ Phone (≤640px) ================ */
-@media (max-width: 640px) {
-  body::-webkit-scrollbar { width: 0; }
+/* ================ Tablet (701–860px): tighten navbar so links can't wrap ================ */
+@media (max-width: 860px) and (min-width: 701px) {
+  .nav-left { gap: 14px; }
+  .nav-left nav { gap: 10px; }
+  .nav-left nav a { font-size: 12px; }
+  .logo { font-size: 22px; }
+  .search-box input { width: 110px; }
+  .search-box:focus-within input { width: 150px; }
+}
 
+/* ================ Navbar (≤700px): hamburger menu — needs a wider
+   threshold than the rest of the phone layout since the inline nav has
+   nowhere left to shrink once search + profile controls are accounted for */
+@media (max-width: 700px) {
   #navbar {
     padding: 0 14px; height: 52px;
     background: linear-gradient(180deg, rgba(0,0,0,0.95) 30%, transparent);
   }
-  .nav-left { gap: 8px; flex: 1; min-width: 0; }
+  .nav-left { gap: 10px; }
+  .nav-hamburger { display: block; }
   .logo { font-size: 22px; letter-spacing: 1px; }
   .nav-left nav {
-    display: flex; gap: 12px; overflow-x: auto;
-    scrollbar-width: none; flex: 1;
+    display: flex; flex-direction: column; gap: 2px;
+    position: fixed; top: 52px; left: 0; right: 0; z-index: 49;
+    background: rgba(10,10,10,0.98); backdrop-filter: blur(10px);
+    padding: 8px 4% 16px;
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.25s var(--ease);
   }
-  .nav-left nav::-webkit-scrollbar { display: none; }
-  .nav-left nav a { font-size: 12px; white-space: nowrap; }
+  .nav-left nav.open { max-height: 60vh; overflow-y: auto; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .nav-left nav a { font-size: 15px; padding: 12px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .nav-right { gap: 10px; }
   .search-box {
     padding: 6px 8px;
@@ -1109,6 +1132,11 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .search-box input { width: 80px; font-size: 13px; }
   .search-box:focus-within input { width: 140px; }
   .profile-avatar-mini { width: 28px; height: 28px; }
+}
+
+/* ================ Phone (≤640px) ================ */
+@media (max-width: 640px) {
+  body::-webkit-scrollbar { width: 0; }
 
   /* Hero */
   .hero { height: 68vh; min-height: 420px; }
@@ -1163,13 +1191,14 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
     border-radius: 0; min-height: 100vh;
   }
   .modal-close {
-    top: 10px; right: 10px; width: 32px; height: 32px; font-size: 20px;
+    top: 10px; right: 10px; width: 36px; height: 36px; font-size: 20px;
   }
   .modal-hero-content { left: 4%; right: 4%; bottom: 18px; }
   .modal-hero-content h2 { font-size: 22px; margin-bottom: 12px; }
   .modal-hero-content h2.has-logo { height: 80px; max-width: 80%; margin-bottom: 12px; }
+  .modal-hero-buttons { flex-wrap: wrap; row-gap: 8px; }
   .modal-hero-buttons .btn { padding: 8px 18px; font-size: 14px; }
-  .modal-hero-buttons .icon-btn { width: 36px; height: 36px; font-size: 18px; }
+  .modal-hero-buttons .icon-btn { width: 40px; height: 40px; font-size: 18px; }
   .modal-info { padding: 0 4% 32px; }
   .modal-meta { font-size: 13px; gap: 8px; }
   #modal-overview { font-size: 14px; }

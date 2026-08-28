@@ -565,10 +565,21 @@ function preloadImage(url) {
 }
 
 // ---------- Cards & Rows ----------
+// Makes a non-native clickable element (div-based card) reachable and
+// operable by keyboard: focusable, announced as a button with a real name,
+// and activatable with Enter/Space — none of which a bare click handler gives you.
+function makeFocusableActivatable(el, label, onActivate) {
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  el.setAttribute("aria-label", label);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
+  });
+}
+
 function makeCard(item, opts = {}) {
   const card = document.createElement("div");
   card.className = "card";
-  card.tabIndex = 0;
   card.dataset.itemId = item.id;
   card.dataset.itemType = item.type;
   const bg = item.poster || item.backdropMd || item.backdrop;
@@ -623,8 +634,8 @@ function makeCard(item, opts = {}) {
     ${progressBar}
     <div class="card-info">
       <div class="row1">
-        <div class="play-mini">▶</div>
-        <div class="add-mini">+</div>
+        <button type="button" class="play-mini" aria-label="Play ${escapeHTML(item.title || "")}">▶</button>
+        <button type="button" class="add-mini" aria-label="Add ${escapeHTML(item.title || "")} to My List">+</button>
       </div>
       <div class="row2">
         ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
@@ -633,6 +644,7 @@ function makeCard(item, opts = {}) {
       </div>
       <div class="title">${escapeHTML(item.title || "")}</div>
     </div>`;
+  makeFocusableActivatable(card, item.title || "Untitled", () => openModal(item));
   if (dismissBtn) {
     card.querySelector(".cw-dismiss").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -672,8 +684,8 @@ function makeCard(item, opts = {}) {
         wrap.className = "card-trailer";
         const renderTrailer = () => {
           wrap.innerHTML = `
-            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>
-            <button class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
+            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
           wrap.querySelector(".card-mute").addEventListener("click", (e) => {
             e.stopPropagation();
             cardMuted = !cardMuted;
@@ -700,6 +712,7 @@ function makeTop10Card(item, rank) {
     <div class="top10-number">${rank}</div>
     <div class="top10-poster" style="background-image:url('${bg}')"></div>`;
   card.addEventListener("click", () => openModal(item));
+  makeFocusableActivatable(card, `#${rank}: ${item.title || "Untitled"}`, () => openModal(item));
   return card;
 }
 
@@ -735,8 +748,8 @@ function renderRow(title, items, opts = {}) {
   });
   wrap.appendChild(scroll);
 
-  const left = document.createElement("button"); left.className = "row-arrow left"; left.innerHTML = "‹";
-  const right = document.createElement("button"); right.className = "row-arrow right"; right.innerHTML = "›";
+  const left = document.createElement("button"); left.className = "row-arrow left"; left.innerHTML = "‹"; left.setAttribute("aria-label", "Scroll left");
+  const right = document.createElement("button"); right.className = "row-arrow right"; right.innerHTML = "›"; right.setAttribute("aria-label", "Scroll right");
   left.addEventListener("click", () => scroll.scrollBy({ left: -scroll.clientWidth * 0.85, behavior: "smooth" }));
   right.addEventListener("click", () => scroll.scrollBy({ left: scroll.clientWidth * 0.85, behavior: "smooth" }));
   wrap.appendChild(left); wrap.appendChild(right);
@@ -796,7 +809,7 @@ async function renderHero(item) {
     const key = await fetchTrailerKey(item);
     if (key) {
       const muteParam = heroMuted ? 1 : 0;
-      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
+      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     }
   } catch {}
 }
@@ -837,6 +850,7 @@ async function fetchTrailerKey(item) {
 $("#mute-btn").addEventListener("click", () => {
   heroMuted = !heroMuted;
   $("#mute-btn").textContent = heroMuted ? "🔇" : "🔊";
+  $("#mute-btn").setAttribute("aria-label", heroMuted ? "Unmute" : "Mute");
   if (heroItem) renderHero(heroItem);
 });
 
@@ -2572,6 +2586,11 @@ function renderNewEpisodeBadge(item) {
 }
 
 async function openModal(item, opts = {}) {
+  // Push a real history entry for this title so the browser Back button
+  // closes the modal instead of leaving the site — every entry point
+  // (card click, hero, search result, etc.) funnels through here.
+  const titleHash = `#/title/${item.type}/${item.id}`;
+  if (location.hash !== titleHash) history.pushState(null, "", titleHash);
   currentItem = item;
   modalDetails = null;
   $("#modal").classList.remove("hidden");
@@ -2617,7 +2636,7 @@ async function openModal(item, opts = {}) {
   try {
     const key = await fetchTrailerKey(item);
     if (key) {
-      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
+      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     }
   } catch {}
 
@@ -2800,6 +2819,7 @@ function makeSimilarCard(item) {
       <div class="sim-overview">${escapeHTML(item.overview || "")}</div>
     </div>`;
   div.addEventListener("click", () => openModal(item));
+  makeFocusableActivatable(div, item.title || "Untitled", () => openModal(item));
   return div;
 }
 
@@ -3101,9 +3121,10 @@ $("#hero-play-btn").addEventListener("click", () => {
 $("#modal-mute-btn").addEventListener("click", () => {
   modalMuted = !modalMuted;
   $("#modal-mute-btn").textContent = modalMuted ? "🔇" : "🔊";
+  $("#modal-mute-btn").setAttribute("aria-label", modalMuted ? "Unmute" : "Mute");
   if (currentItem && !$("#player-wrap").classList.contains("active")) {
     fetchTrailerKey(currentItem).then(key => {
-      if (key) $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media"></iframe>`;
+      if (key) $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     });
   }
 });
@@ -3145,6 +3166,7 @@ function updateListButton() {
   const inList = myList.some(x => x.id === currentItem.id && x.type === currentItem.type);
   $("#add-list").textContent = inList ? "✓" : "+";
   $("#add-list").title = inList ? "Remove from My List" : "Add to My List";
+  $("#add-list").setAttribute("aria-label", inList ? "Remove from My List" : "Add to My List");
 }
 $("#add-list").addEventListener("click", (e) => { if (currentItem) { toggleList(currentItem); sparkleAt(e.currentTarget); } });
 
@@ -3295,7 +3317,10 @@ async function route() {
 
   // Modal route: #/title/{type}/{id} (?back=<encoded-prev-hash>)
   if (parts[0] === "title" && parts[1] && parts[2]) {
-    if ($("#modal").classList.contains("hidden")) await openTitleByRoute(parts[1], parts[2]);
+    // Re-render even if a modal is already open, so back/forward between two
+    // different titles (e.g. navigated via "More Like This") shows the right one.
+    const isSameTitle = currentItem && currentItem.type === parts[1] && String(currentItem.id) === parts[2];
+    if ($("#modal").classList.contains("hidden") || !isSameTitle) await openTitleByRoute(parts[1], parts[2]);
     return;
   }
   // Otherwise close any open modal silently
@@ -3412,9 +3437,22 @@ function closeModalSilent() {
 window.addEventListener("hashchange", route);
 
 // ---------- Nav ----------
+function setMobileNavOpen(open) {
+  $("#navbar-nav").classList.toggle("open", open);
+  $("#nav-hamburger").setAttribute("aria-expanded", open ? "true" : "false");
+}
+$("#nav-hamburger").addEventListener("click", () => {
+  setMobileNavOpen(!$("#navbar-nav").classList.contains("open"));
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest("#navbar-nav") && !e.target.closest("#nav-hamburger")) setMobileNavOpen(false);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") setMobileNavOpen(false); });
+
 $$("#navbar [data-nav]").forEach(a => {
   a.addEventListener("click", e => {
     e.preventDefault();
+    setMobileNavOpen(false);
     const nav = a.dataset.nav;
     if (nav === "home") navTo("#/");
     else if (nav === "movies") navTo("#/movies");
@@ -3422,7 +3460,7 @@ $$("#navbar [data-nav]").forEach(a => {
     else if (nav === "anime") navTo("#/anime");
     else if (nav === "new") navTo("#/new");
     else if (nav === "mylist") navTo("#/list");
-    else if (nav === "history") navTo("#/history");
+    else if (nav === "history") { setProfileMenuOpen(false); navTo("#/history"); }
   });
 });
 
@@ -3670,16 +3708,29 @@ function maybeShowOnboarding() {
     localStorage.setItem(STORAGE.onboarded, "1");
   }, 1200);
 }
+function setProfileMenuOpen(open) {
+  $("#profile-pill").classList.toggle("open", open);
+  $("#profile-pill").setAttribute("aria-expanded", open ? "true" : "false");
+}
 $("#profile-pill").addEventListener("click", e => {
   if (e.target.closest(".profile-menu")) return;
-  $("#profile-pill").classList.toggle("open");
+  setProfileMenuOpen(!$("#profile-pill").classList.contains("open"));
+});
+$("#profile-pill").addEventListener("keydown", e => {
+  if (e.target.closest(".profile-menu")) return;
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    setProfileMenuOpen(!$("#profile-pill").classList.contains("open"));
+  } else if (e.key === "Escape") {
+    setProfileMenuOpen(false);
+  }
 });
 document.addEventListener("click", e => {
-  if (!e.target.closest("#profile-pill")) $("#profile-pill").classList.remove("open");
+  if (!e.target.closest("#profile-pill")) setProfileMenuOpen(false);
 });
 $("#switch-profile").addEventListener("click", e => {
   e.preventDefault();
-  $("#profile-pill").classList.remove("open");
+  setProfileMenuOpen(false);
   $("#app").classList.add("hidden");
   $("#profile-screen").classList.remove("hidden");
   activeProfile = null;
@@ -3692,7 +3743,7 @@ $("#clear-data").addEventListener("click", e => {
     saveProgress(); saveJSON(STORAGE.list, myList);
     route();
   }
-  $("#profile-pill").classList.remove("open");
+  setProfileMenuOpen(false);
 });
 
 // ---------- Boot ----------

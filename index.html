@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=43" />
+<link rel="stylesheet" href="styles.css?v=53" />
 </head>
 <body>
 
@@ -49,8 +49,9 @@
 
 <header id="navbar">
   <div class="nav-left">
+    <button class="nav-hamburger" id="nav-hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="navbar-nav">☰</button>
     <a href="#" class="logo" data-nav="home">MOVIEBOX</a>
-    <nav>
+    <nav id="navbar-nav">
       <a href="#" data-nav="home" class="active">Home</a>
       <a href="#" data-nav="tv">TV Shows</a>
       <a href="#" data-nav="movies">Movies</a>
@@ -67,7 +68,7 @@
       </div>
       <div id="search-suggest" class="search-suggest hidden"></div>
     </div>
-    <div class="profile-pill" id="profile-pill">
+    <div class="profile-pill" id="profile-pill" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
       <div class="profile-avatar-mini" id="profile-avatar-mini"></div>
       <span class="caret">▾</span>
       <div class="profile-menu" id="profile-menu">
@@ -136,8 +137,8 @@
         <h2 id="modal-title"></h2>
         <div class="modal-hero-buttons">
           <button id="hero-play-btn" class="btn">▶ Play</button>
-          <button id="add-list" class="icon-btn" title="My List">+</button>
-          <button id="modal-mute-btn" class="icon-btn mute-circle">🔇</button>
+          <button id="add-list" class="icon-btn" title="My List" aria-label="Add to My List">+</button>
+          <button id="modal-mute-btn" class="icon-btn mute-circle" aria-label="Mute">🔇</button>
         </div>
       </div>
     </div>
@@ -183,6 +184,6 @@
   </div>
 </div>
 
-<script src="app.js?v=48"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
