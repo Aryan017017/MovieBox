@@ -3235,26 +3235,36 @@ window.addEventListener("message", (event) => {
   if (event.origin !== PLAYER_ORIGIN) return;  // only trust the embedded player iframe
   let data = event.data;
   if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
-  if (!data || typeof data !== "object" || data.id == null || !data.type) return;
+  // The player wraps every event as {type:"PLAYER_EVENT", data:{event:"timeupdate", currentTime, duration, id, mediaType, season, episode}}
+  // — it does NOT send a pre-computed percentage or flat top-level fields.
+  if (!data || typeof data !== "object" || data.type !== "PLAYER_EVENT") return;
+  const d = data.data;
+  if (!d || d.event !== "timeupdate" || d.id == null) return;
   if (!currentItem) return;
+  if (String(d.id) !== String(currentItem.id) || d.mediaType !== currentItem.type) return; // stale event from a previous title
   if (privacy.pauseProgress) return;  // privacy: skip progress saves
+
+  const timestamp = d.currentTime || 0;
+  const duration = d.duration || 0;
+  const progress = duration > 0 ? Math.min(100, (timestamp / duration) * 100) : 0;
+  const season = Number.isFinite(d.season) ? d.season : undefined;
+  const episode = Number.isFinite(d.episode) ? d.episode : undefined;
+
   progressMap[progressKey(currentItem)] = {
-    progress: data.progress, timestamp: data.timestamp, duration: data.duration,
-    season: data.season, episode: data.episode, updatedAt: Date.now(),
+    progress, timestamp, duration,
+    season, episode, updatedAt: Date.now(),
     title: currentItem.title, poster: currentItem.poster, backdrop: currentItem.backdrop, backdropMd: currentItem.backdropMd,
     overview: currentItem.overview, year: currentItem.year, rating: currentItem.rating,
     itemType: currentItem.type, itemId: currentItem.id,
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
   };
   // Per-episode progress tracking (Netflix-style: every watched episode keeps its own bar)
-  if ((currentItem.type === "tv" || currentItem.type === "anime") && data.episode) {
-    const epKey = episodeProgressKey(currentItem, data.season || 1, data.episode);
+  if ((currentItem.type === "tv" || currentItem.type === "anime") && episode) {
+    const epKey = episodeProgressKey(currentItem, season || 1, episode);
     progressMap[epKey] = {
-      progress: data.progress,
-      timestamp: data.timestamp,
-      duration: data.duration,
-      season: data.season || 1,
-      episode: data.episode,
+      progress, timestamp, duration,
+      season: season || 1,
+      episode,
       updatedAt: Date.now(),
       isEpisode: true,
     };
@@ -3262,19 +3272,19 @@ window.addEventListener("message", (event) => {
   saveProgress();
 
   // ----- Skip Intro & Up Next overlays -----
-  if (typeof data.timestamp === "number") lastTimestamp = data.timestamp;
+  lastTimestamp = timestamp;
   const isEpisodeContent = playingItem && (playingItem.type === "tv" || (playingItem.type === "anime" && !playingItem.isMovie));
   // Skip Intro: show during 5s..120s of episode runtime (and only briefly)
-  if (isEpisodeContent && typeof data.timestamp === "number") {
-    if (data.timestamp >= 5 && data.timestamp <= 120) {
+  if (isEpisodeContent) {
+    if (timestamp >= 5 && timestamp <= 120) {
       if (!skipIntroShown) showSkipIntro();
-    } else if (skipIntroShown && data.timestamp > 130) {
+    } else if (skipIntroShown && timestamp > 130) {
       removeSkipIntro();
     }
   }
   // Up Next: in last ~25 seconds, with a known next episode
-  if (nextEpContext && typeof data.timestamp === "number" && typeof data.duration === "number" && data.duration > 60) {
-    const remaining = data.duration - data.timestamp;
+  if (nextEpContext && duration > 60) {
+    const remaining = duration - timestamp;
     if (remaining > 0 && remaining <= 25 && !upNextShown) showUpNext();
   }
 });
