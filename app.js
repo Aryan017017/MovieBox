@@ -33,6 +33,16 @@ const PLAYER_BASES = {
 const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
 const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
 const YT = "https://www.youtube.com/embed/";
+// Toggling mute by tearing down and recreating the iframe re-triggers the
+// browser's autoplay-with-sound gate — mobile Safari/Chrome only allow that
+// on a synchronous tap, and rebuilding involves an async trailer-key fetch,
+// so the new iframe's unmuted autoplay silently gets blocked. Instead we keep
+// the same already-playing iframe alive and just send it a mute/unMute
+// command (requires enablejsapi=1 on the src), which is always allowed since
+// no new playback is being started.
+function postYTCommand(iframe, func) {
+  try { iframe?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args: [] }), "https://www.youtube.com"); } catch {}
+}
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -686,12 +696,16 @@ function makeCard(item, opts = {}) {
         wrap.className = "card-trailer";
         const renderTrailer = () => {
           wrap.innerHTML = `
-            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
             <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
-          wrap.querySelector(".card-mute").addEventListener("click", (e) => {
+          const muteBtn = wrap.querySelector(".card-mute");
+          muteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             cardMuted = !cardMuted;
-            renderTrailer();
+            postYTCommand(wrap.querySelector("iframe"), cardMuted ? "mute" : "unMute");
+            muteBtn.textContent = cardMuted ? "🔇" : "🔊";
+            muteBtn.title = cardMuted ? "Unmute" : "Mute";
+            muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
           });
         };
         renderTrailer();
@@ -820,7 +834,7 @@ async function renderHero(item) {
     const key = await fetchTrailerKey(item);
     if (key) {
       const muteParam = heroMuted ? 1 : 0;
-      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
       // The hero trailer is a passive background, not something to click/hover
       // into — this also stops the browser's own hover media controls from
       // ever appearing, since those only show up on actual pointer interaction.
@@ -885,7 +899,7 @@ $("#mute-btn").addEventListener("click", () => {
   heroMuted = !heroMuted;
   $("#mute-btn").textContent = heroMuted ? "🔇" : "🔊";
   $("#mute-btn").setAttribute("aria-label", heroMuted ? "Unmute" : "Mute");
-  if (heroItem) renderHero(heroItem);
+  postYTCommand($("#hero-trailer iframe"), heroMuted ? "mute" : "unMute");
 });
 
 function stopHeroTrailer() {
@@ -2609,7 +2623,7 @@ async function openModal(item, opts = {}) {
   try {
     const key = await fetchTrailerKey(item);
     if (key) {
-      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     }
   } catch {}
 
@@ -3045,11 +3059,7 @@ $("#modal-mute-btn").addEventListener("click", () => {
   modalMuted = !modalMuted;
   $("#modal-mute-btn").textContent = modalMuted ? "🔇" : "🔊";
   $("#modal-mute-btn").setAttribute("aria-label", modalMuted ? "Unmute" : "Mute");
-  if (currentItem && !$("#player-wrap").classList.contains("active")) {
-    fetchTrailerKey(currentItem).then(key => {
-      if (key) $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
-    });
-  }
+  postYTCommand($("#modal-trailer iframe"), modalMuted ? "mute" : "unMute");
 });
 
 // ---------- My List ----------
