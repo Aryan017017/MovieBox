@@ -17,15 +17,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=61" />
+<link rel="stylesheet" href="styles.css?v=62" />
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
+<!-- Boot / session-check splash -->
+<div id="boot-screen" class="login-screen">
+  <div class="login-inner">
+    <h1 class="logo login-logo">MOVIEBOX</h1>
+    <div class="boot-spinner"></div>
+  </div>
+</div>
+
 <!-- Login / Sign up -->
-<div id="login-screen" class="login-screen">
+<div id="login-screen" class="login-screen hidden">
   <div class="login-inner">
     <h1 class="logo login-logo">MOVIEBOX</h1>
     <div class="login-card">
@@ -196,6 +204,6 @@
     appId: "1:93182489172:web:c614f5c616eda922dab3c1",
   };
 </script>
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

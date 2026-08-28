@@ -3675,6 +3675,7 @@ let authMode = "signin"; // "signin" | "signup"
 
 function showLoginScreen() {
   stopCloudListener();
+  $("#boot-screen").classList.add("hidden");
   $("#app").classList.add("hidden");
   $("#login-screen").classList.remove("hidden");
 }
@@ -3743,6 +3744,7 @@ async function enterApp(user) {
   migrateEpisodeProgress();
   checkBedtime();
   startCloudListener();
+  $("#boot-screen").classList.add("hidden");
   $("#login-screen").classList.add("hidden");
   $("#app").classList.remove("hidden");
   const initial = (user.email || "?").trim().charAt(0).toUpperCase();
