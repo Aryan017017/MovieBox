@@ -2890,8 +2890,7 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
-    allowfullscreen referrerpolicy="no-referrer"
-    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock"></iframe>
+    allowfullscreen referrerpolicy="no-referrer"></iframe>
     <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
   $("#modal").scrollTop = 0;
 
