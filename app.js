@@ -836,6 +836,7 @@ async function renderHero(item) {
       ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
       <span>${item.year || ""}</span>
     </div>
+    <div class="hero-meta-line" id="hero-meta-line"></div>
     <p>${escapeHTML(item.overview || "")}</p>
     <div class="hero-buttons">
       <button class="btn" id="hero-play">▶ Play</button>
@@ -851,6 +852,13 @@ async function renderHero(item) {
     }
   });
 
+  // Compact "Type • Genre • Year • Runtime/Seasons • Age" line, Netflix-style
+  fetchHeroMetaLine(item).then(parts => {
+    if (parts.length && heroItem === item) {
+      $("#hero-meta-line").innerHTML = parts.map(escapeHTML).join(' <span class="dot">•</span> ');
+    }
+  });
+
   // Try to fetch trailer
   try {
     const key = await fetchTrailerKey(item);
@@ -859,6 +867,28 @@ async function renderHero(item) {
       trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     }
   } catch {}
+}
+
+// "Show • Action • 2026 • 2 Seasons • TV-PG" style compact hero metadata line.
+async function fetchHeroMetaLine(item) {
+  const typeLabel = item.type === "movie" ? "Movie" : item.type === "tv" ? "Show" : "Anime";
+  const parts = [typeLabel];
+  if (item.type === "anime") {
+    if (item.genres?.[0]) parts.push(item.genres[0]);
+    if (item.year) parts.push(String(item.year));
+    if (!item.isMovie && item.episodes) parts.push(`${item.episodes} Episode${item.episodes > 1 ? "s" : ""}`);
+    parts.push(pseudoAge(item));
+    return parts;
+  }
+  try {
+    const details = await tmdb(`/${item.type}/${item.id}`);
+    if (details.genres?.[0]?.name) parts.push(details.genres[0].name);
+    if (item.year) parts.push(String(item.year));
+    if (item.type === "movie" && details.runtime) parts.push(`${details.runtime}m`);
+    else if (item.type === "tv" && details.number_of_seasons) parts.push(`${details.number_of_seasons} Season${details.number_of_seasons > 1 ? "s" : ""}`);
+    parts.push(pseudoAge(item));
+    return parts;
+  } catch { return []; }
 }
 
 async function fetchTitleLogo(item) {
@@ -3624,6 +3654,16 @@ document.addEventListener("click", (e) => {
 $("#search").addEventListener("focus", () => {
   const q = $("#search").value.trim();
   if (q) showSuggestions(q);
+});
+
+// Icon-only search that expands on click (Netflix-style), collapses back
+// when it loses focus with nothing typed in it.
+$("#search-icon").addEventListener("click", () => {
+  $("#search-box").classList.add("open");
+  $("#search").focus();
+});
+$("#search").addEventListener("blur", () => {
+  if (!$("#search").value.trim()) $("#search-box").classList.remove("open");
 });
 
 // ---------- Keyboard navigation ----------
