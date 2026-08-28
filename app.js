@@ -2,6 +2,19 @@
 // CONFIG
 // =========================================================================
 const TMDB_API_KEY = "ebc17fdd2c491ffd1d0cbac7000be592";
+// YouTube Data API v3 key — get one free at console.cloud.google.com
+// (APIs & Services > Library > enable "YouTube Data API v3" > Credentials).
+// Leave "" to disable the YouTube rows entirely.
+const YOUTUBE_API_KEY = "";
+// Each entry pulls from that channel's "uploads" playlist (its full upload
+// history) unless an explicit playlistId is given, in which case that exact
+// playlist is used instead (e.g. a specific show/podcast playlist rather
+// than everything the channel posts).
+const YOUTUBE_CHANNELS = [
+  { label: "Flagrant", handle: "OfficialFlagrant" },
+  { label: "MSSP", handle: "MSsecretpod" },
+  { label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "" }, // TODO: paste IGR's podcast playlist ID
+];
 const PLAYER_COLOR = "E50914";
 // Optional: deploy the Cloudflare Worker in /worker and put its URL here to
 // route the player through a popup-shielding proxy. Leave "" to disable.
@@ -452,6 +465,48 @@ async function tmdb(path, params = {}) {
   return json;
 }
 
+// ---------- YouTube channel rows ----------
+const YOUTUBE_API = "https://www.googleapis.com/youtube/v3";
+async function youtubeFetch(path, params = {}) {
+  const url = new URL(`${YOUTUBE_API}/${path}`);
+  url.searchParams.set("key", YOUTUBE_API_KEY);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`YouTube API ${r.status}`);
+  return r.json();
+}
+// Every channel has an auto-generated "uploads" playlist holding its full
+// upload history — resolve it once per handle and cache it for the session.
+const uploadsPlaylistCache = {};
+async function resolveUploadsPlaylistId(handle) {
+  if (uploadsPlaylistCache[handle]) return uploadsPlaylistCache[handle];
+  const data = await youtubeFetch("channels", { forHandle: handle, part: "contentDetails" });
+  const id = data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (id) uploadsPlaylistCache[handle] = id;
+  return id;
+}
+function normalizeYouTubeVideo(playlistItem) {
+  const sn = playlistItem.snippet;
+  const videoId = playlistItem.contentDetails?.videoId || sn?.resourceId?.videoId;
+  return {
+    id: videoId,
+    type: "youtube",
+    title: sn.title,
+    channelTitle: sn.videoOwnerChannelTitle || sn.channelTitle,
+    poster: sn.thumbnails?.high?.url || sn.thumbnails?.medium?.url || sn.thumbnails?.default?.url,
+    publishedAt: sn.publishedAt,
+  };
+}
+async function fetchYouTubeChannelRow(cfg) {
+  const playlistId = cfg.playlistId || await resolveUploadsPlaylistId(cfg.handle);
+  if (!playlistId) return { label: cfg.label, items: [] };
+  const data = await youtubeFetch("playlistItems", { playlistId, part: "snippet,contentDetails", maxResults: 12 });
+  const items = (data.items || [])
+    .filter(it => it.contentDetails?.videoId && it.snippet?.title && it.snippet.title !== "Private video" && it.snippet.title !== "Deleted video")
+    .map(normalizeYouTubeVideo);
+  return { label: cfg.label, items };
+}
+
 // ---------- Normalizers ----------
 function normalizeTMDB(item, forcedType) {
   const type = forcedType || (item.media_type === "tv" ? "tv" : item.media_type === "movie" ? "movie" : "movie");
@@ -727,6 +782,46 @@ function makeCard(item, opts = {}) {
   return card;
 }
 
+function timeAgo(iso) {
+  if (!iso) return "";
+  const secs = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (secs < 3600) return `${Math.max(1, Math.floor(secs / 60))}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  if (secs < 2592000) return `${Math.floor(secs / 86400)}d ago`;
+  return `${Math.floor(secs / 2592000)}mo ago`;
+}
+function makeYouTubeCard(item) {
+  const card = document.createElement("div");
+  card.className = "yt-card";
+  if (item.poster) { card.dataset.bg = item.poster; lazyImageObserver.observe(card); }
+  card.innerHTML = `
+    <div class="yt-play-badge">▶</div>
+    <div class="card-info">
+      <div class="row2">${escapeHTML(item.channelTitle || "")} ${item.publishedAt ? `<span class="dot">•</span> ${timeAgo(item.publishedAt)}` : ""}</div>
+      <div class="title">${escapeHTML(item.title || "")}</div>
+    </div>`;
+  card.addEventListener("click", () => openYouTubeLightbox(item));
+  makeFocusableActivatable(card, item.title || "Video", () => openYouTubeLightbox(item));
+  return card;
+}
+function openYouTubeLightbox(item) {
+  $("#yt-lightbox-title").textContent = item.title || "";
+  $("#yt-lightbox-channel").textContent = item.channelTitle || "";
+  $("#yt-lightbox-player").innerHTML = `<iframe src="${YT}${item.id}?autoplay=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>`;
+  $("#yt-lightbox").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeYouTubeLightbox() {
+  $("#yt-lightbox").classList.add("hidden");
+  $("#yt-lightbox-player").innerHTML = "";
+  document.body.style.overflow = "";
+}
+$(".yt-lightbox-close").addEventListener("click", closeYouTubeLightbox);
+$("#yt-lightbox").addEventListener("click", (e) => { if (e.target.id === "yt-lightbox") closeYouTubeLightbox(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#yt-lightbox").classList.contains("hidden")) closeYouTubeLightbox();
+});
+
 function makeTop10Card(item, rank) {
   const card = document.createElement("div");
   card.className = "top10-card";
@@ -768,6 +863,7 @@ function renderRow(title, items, opts = {}) {
       }
       scroll.appendChild(card);
     }
+    else if (it.type === "youtube") scroll.appendChild(makeYouTubeCard(it));
     else if (it.poster || it.backdrop) scroll.appendChild(makeCard(it, opts));
   });
   wrap.appendChild(scroll);
@@ -991,6 +1087,16 @@ async function showHome() {
     rows.appendChild(renderRow("Popular Movies", popMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     rows.appendChild(renderRow("Popular TV Shows", popTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
     rows.appendChild(renderRow("Critically Acclaimed Movies", topMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
+
+    // YouTube channel rows (fire-and-forget, same pattern as the recommendation rows above)
+    if (YOUTUBE_API_KEY) {
+      Promise.all(YOUTUBE_CHANNELS.map(cfg => fetchYouTubeChannelRow(cfg).catch(() => ({ label: cfg.label, items: [] }))))
+        .then(results => {
+          results.forEach(({ label, items }) => {
+            if (items.length) rows.appendChild(renderRow(label, items));
+          });
+        }).catch(() => {});
+    }
 
     // Genre rows (lazy after main content)
     for (const g of GENRES_MOVIE.slice(0, 5)) {

@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" />
-<link rel="stylesheet" href="styles.css?v=67" />
+<link rel="stylesheet" href="styles.css?v=68" />
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -192,6 +192,18 @@
   </div>
 </div>
 
+<!-- YouTube channel-row video lightbox -->
+<div id="yt-lightbox" class="yt-lightbox hidden">
+  <button class="yt-lightbox-close" aria-label="Close">×</button>
+  <div class="yt-lightbox-inner">
+    <div id="yt-lightbox-player"></div>
+    <div class="yt-lightbox-meta">
+      <h2 id="yt-lightbox-title"></h2>
+      <div id="yt-lightbox-channel" class="yt-lightbox-channel"></div>
+    </div>
+  </div>
+</div>
+
 <script>
   // Firebase config — safe to be public; access is enforced by Firestore security rules.
   const FIREBASE_CONFIG = {
@@ -203,6 +215,6 @@
     appId: "1:93182489172:web:c614f5c616eda922dab3c1",
   };
 </script>
-<script src="app.js?v=67"></script>
+<script src="app.js?v=68"></script>
 </body>
 </html>
