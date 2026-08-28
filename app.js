@@ -20,7 +20,12 @@ const PLAYER_PROVIDER = "videasy";
 const TMDB = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
 const PLAYER_BASES = {
-  videasy: "https://player.videasy.net",
+  // .net 301-redirects to .to — pointing here directly avoids the extra hop,
+  // and matters more than that: postMessage's event.origin reflects the
+  // final redirected document (.to), so PLAYER_ORIGIN (derived from this
+  // constant) must match .to or the progress-tracking listener silently
+  // rejects every message from the real player.
+  videasy: "https://player.videasy.to",
   vidlink: "https://vidlink.pro",
   vidsrc:  "https://vidsrc.cc/v2/embed",
   embedsu: "https://embed.su/embed",
