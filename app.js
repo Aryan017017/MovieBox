@@ -11,9 +11,9 @@ const YOUTUBE_API_KEY = "AIzaSyAKKU-KovcZzcvcXtUhuoUEsYBndxAOfjU";
 // playlist is used instead (e.g. a specific show/podcast playlist rather
 // than everything the channel posts).
 const YOUTUBE_CHANNELS = [
-  { label: "Flagrant", handle: "OfficialFlagrant" },
-  { label: "MSSP", handle: "MSsecretpod" },
-  { label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "" }, // TODO: paste IGR's podcast playlist ID
+  { key: "flagrant", label: "Flagrant", handle: "OfficialFlagrant" },
+  { key: "mssp", label: "MSSP", handle: "MSsecretpod" },
+  { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "" }, // TODO: paste IGR's podcast playlist ID
 ];
 const PLAYER_COLOR = "E50914";
 // Optional: deploy the Cloudflare Worker in /worker and put its URL here to
@@ -500,13 +500,14 @@ function normalizeYouTubeVideo(playlistItem) {
     publishedAt: sn.publishedAt,
   };
 }
-async function fetchYouTubeChannelRow(cfg) {
+async function fetchYouTubeChannelRow(cfg, maxResults = 12) {
   const playlistId = cfg.playlistId || await resolveUploadsPlaylistId(cfg.handle);
   if (!playlistId) return { label: cfg.label, items: [] };
-  const data = await youtubeFetch("playlistItems", { playlistId, part: "snippet,contentDetails", maxResults: 12 });
+  const data = await youtubeFetch("playlistItems", { playlistId, part: "snippet,contentDetails", maxResults });
   const items = (data.items || [])
     .filter(it => it.contentDetails?.videoId && it.snippet?.title && it.snippet.title !== "Private video" && it.snippet.title !== "Deleted video")
-    .map(normalizeYouTubeVideo);
+    .map(normalizeYouTubeVideo)
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
   return { label: cfg.label, items };
 }
 
@@ -836,6 +837,71 @@ function makeYouTubeCard(item, opts = {}) {
     });
   }
   return card;
+}
+
+function makeChannelTile(cfg, previewItem) {
+  const tile = document.createElement("div");
+  tile.className = "yt-channel-tile";
+  if (previewItem?.poster) { tile.dataset.bg = previewItem.poster; lazyImageObserver.observe(tile); }
+  tile.innerHTML = `
+    <div class="yt-channel-tile-overlay">
+      <div class="yt-channel-tile-name">${escapeHTML(cfg.label)}</div>
+      <div class="yt-channel-tile-cta">Browse & Search →</div>
+    </div>`;
+  const go = () => navTo(`#/youtube/${cfg.key}`);
+  tile.addEventListener("click", go);
+  makeFocusableActivatable(tile, `Browse ${cfg.label}`, go);
+  return tile;
+}
+function renderYouTubeChannelTiles(entries) {
+  const section = document.createElement("section");
+  section.className = "row";
+  const head = document.createElement("div");
+  head.className = "row-head";
+  head.innerHTML = `<h2>Browse by Channel</h2>`;
+  section.appendChild(head);
+  const wrap = document.createElement("div");
+  wrap.className = "yt-channels-grid";
+  entries.forEach(({ cfg, items }) => {
+    if (!items.length) return;
+    wrap.appendChild(makeChannelTile(cfg, items[0]));
+  });
+  section.appendChild(wrap);
+  return section;
+}
+async function showYouTubeChannelPage(key) {
+  setActive(null);
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const cfg = YOUTUBE_CHANNELS.find(c => c.key === key);
+  const rows = $("#rows");
+  if (!cfg) { rows.innerHTML = `<div class="empty">Unknown channel.</div>`; return; }
+  rows.innerHTML = `
+    <div class="page-header"><h1>${escapeHTML(cfg.label)}</h1>
+      <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>
+    <div class="yt-search-bar">
+      <input type="text" id="yt-channel-search" class="yt-search-input" placeholder="Search ${escapeHTML(cfg.label)} videos…" autocomplete="off" />
+    </div>
+    <div id="yt-channel-grid" class="yt-grid"><div class="empty">Loading…</div></div>`;
+  const grid = $("#yt-channel-grid");
+  let allVideos = [];
+  try {
+    const { items } = await fetchYouTubeChannelRow(cfg, 50);
+    allVideos = items;
+  } catch (e) {
+    grid.innerHTML = `<div class="empty">Couldn't load videos: ${escapeHTML(e.message)}</div>`;
+    return;
+  }
+  function renderGrid(list) {
+    grid.innerHTML = "";
+    if (!list.length) { grid.innerHTML = `<div class="empty">No videos found.</div>`; return; }
+    list.forEach(v => grid.appendChild(makeYouTubeCard(v)));
+  }
+  renderGrid(allVideos);
+  $("#yt-channel-search").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    renderGrid(q ? allVideos.filter(v => (v.title || "").toLowerCase().includes(q)) : allVideos);
+  });
 }
 
 // ---------- YouTube playback progress tracking ----------
@@ -1214,6 +1280,7 @@ async function showHome() {
           results.forEach(({ label, items }) => {
             if (items.length) rows.appendChild(renderRow(label, items));
           });
+          rows.appendChild(renderYouTubeChannelTiles(YOUTUBE_CHANNELS.map((cfg, i) => ({ cfg, items: results[i].items }))));
         }).catch(() => {});
     }
 
@@ -3558,6 +3625,7 @@ async function route() {
   else if (parts[0] === "achievements") { showAchievements(); p = Promise.resolve(); }
   else if (parts[0] === "privacy") { showPrivacy(); p = Promise.resolve(); }
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
+  else if (parts[0] === "youtube" && parts[1]) p = showYouTubeChannelPage(parts[1]);
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
     $("#search").value = q;
