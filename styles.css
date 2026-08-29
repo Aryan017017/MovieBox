@@ -2121,11 +2121,11 @@ body.bedtime #hero-trailer { opacity: 0.7; }
 .yt-card:focus { outline: none; }
 .yt-card:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .yt-card .yt-play-badge {
-  position: absolute; top: 10px; right: 10px;
-  width: 32px; height: 32px; border-radius: 50%;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 40px; border-radius: 50%;
   background: rgba(0,0,0,0.65); color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; opacity: 0; transition: opacity 0.2s;
+  font-size: 15px; opacity: 0; transition: opacity 0.2s;
 }
 .row-scroll .yt-card:hover .yt-play-badge, .yt-card:focus-visible .yt-play-badge { opacity: 1; }
 .yt-card .card-info {
@@ -2136,6 +2136,9 @@ body.bedtime #hero-trailer { opacity: 0.7; }
 .yt-card .card-info .row2 { color: var(--muted-2); margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
 .yt-card .card-info .row2 .dot { margin: 0 3px; }
 .yt-card .card-info .title { font-weight: 600; font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.yt-card .progress-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.25); overflow: hidden; }
+.yt-card .progress-bar > div { height: 100%; background: var(--accent); }
+.row-scroll .yt-card:hover .cw-dismiss { opacity: 1; }
 
 .yt-lightbox {
   position: fixed; inset: 0; z-index: 2000;

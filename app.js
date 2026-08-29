@@ -45,7 +45,10 @@ const PLAYER_BASES = {
 };
 const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
 const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
-const YT = "https://www.youtube.com/embed/";
+// Named YT_EMBED (not YT) because the real YouTube IFrame Player API script
+// declares a global `YT` object — a `const YT` here would collide with it
+// and throw "Identifier 'YT' has already been declared".
+const YT_EMBED = "https://www.youtube.com/embed/";
 // Toggling mute by tearing down and recreating the iframe re-triggers the
 // browser's autoplay-with-sound gate — mobile Safari/Chrome only allow that
 // on a synchronous tap, and rebuilding involves an async trailer-key fetch,
@@ -758,7 +761,7 @@ function makeCard(item, opts = {}) {
         wrap.className = "card-trailer";
         const renderTrailer = () => {
           wrap.innerHTML = `
-            <iframe src="${YT}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+            <iframe src="${YT_EMBED}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
             <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
           const muteBtn = wrap.querySelector(".card-mute");
           muteBtn.addEventListener("click", (e) => {
@@ -790,28 +793,144 @@ function timeAgo(iso) {
   if (secs < 2592000) return `${Math.floor(secs / 86400)}d ago`;
   return `${Math.floor(secs / 2592000)}mo ago`;
 }
-function makeYouTubeCard(item) {
+function makeYouTubeCard(item, opts = {}) {
   const card = document.createElement("div");
   card.className = "yt-card";
   if (item.poster) { card.dataset.bg = item.poster; lazyImageObserver.observe(card); }
+  const key = progressKey(item);
+  const p = progressMap[key];
+  let progressBar = "", cwMeta = "", dismissBtn = "";
+  if (p?.progress && p.progress > 1 && p.progress < 95) {
+    progressBar = `<div class="progress-bar"><div style="width:${Math.min(100, Math.round(p.progress))}%"></div></div>`;
+  }
+  if (opts.showProgress && p?.progress) {
+    let leftLabel = "";
+    if (p.duration && p.timestamp) {
+      const min = Math.max(1, Math.ceil((p.duration - p.timestamp) / 60));
+      leftLabel = `${min}m left`;
+    }
+    if (leftLabel) cwMeta = `<div class="cw-meta"><span class="ep"></span><span class="left">${leftLabel}</span></div>`;
+    dismissBtn = `<button class="cw-dismiss" title="Remove from Continue Watching" aria-label="Dismiss">×</button>`;
+  }
   card.innerHTML = `
+    ${dismissBtn}
     <div class="yt-play-badge">▶</div>
+    ${cwMeta}
+    ${progressBar}
     <div class="card-info">
       <div class="row2">${escapeHTML(item.channelTitle || "")} ${item.publishedAt ? `<span class="dot">•</span> ${timeAgo(item.publishedAt)}` : ""}</div>
       <div class="title">${escapeHTML(item.title || "")}</div>
     </div>`;
   card.addEventListener("click", () => openYouTubeLightbox(item));
   makeFocusableActivatable(card, item.title || "Video", () => openYouTubeLightbox(item));
+  if (dismissBtn) {
+    card.querySelector(".cw-dismiss").addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      dismissedMap[key] = true;
+      saveDismissed();
+      card.style.transition = "opacity 200ms, transform 200ms";
+      card.style.opacity = "0";
+      card.style.transform = "scale(0.85)";
+      setTimeout(() => card.remove(), 220);
+    });
+  }
   return card;
 }
-function openYouTubeLightbox(item) {
+
+// ---------- YouTube playback progress tracking ----------
+// Loads the real YouTube IFrame Player API (not just a raw <iframe>) so we
+// can poll getCurrentTime()/getDuration() the same way the movie/TV player
+// reports progress via postMessage, and feed it into the same progressMap
+// that powers Continue Watching.
+let ytApiPromise = null;
+function loadYouTubeIframeAPI() {
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve(window.YT);
+    const prevCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prevCallback?.();
+      resolve(window.YT);
+    };
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+  });
+  return ytApiPromise;
+}
+let ytLightboxPlayer = null;
+let ytLightboxItem = null;
+let ytProgressInterval = null;
+function saveYouTubeProgress(progress, timestamp, duration) {
+  const item = ytLightboxItem;
+  if (!item || privacy.pauseProgress) return;
+  progressMap[progressKey(item)] = {
+    progress, timestamp: timestamp || 0, duration: duration || 0,
+    updatedAt: Date.now(),
+    title: item.title, poster: item.poster, backdrop: item.poster, backdropMd: item.poster,
+    itemType: "youtube", itemId: item.id, channelTitle: item.channelTitle, publishedAt: item.publishedAt,
+  };
+  saveProgress();
+}
+function saveYouTubeProgressTick() {
+  if (!ytLightboxPlayer || !ytLightboxItem || privacy.pauseProgress) return;
+  try {
+    const timestamp = ytLightboxPlayer.getCurrentTime();
+    const duration = ytLightboxPlayer.getDuration();
+    if (!duration) return;
+    saveYouTubeProgress(Math.min(100, (timestamp / duration) * 100), timestamp, duration);
+  } catch {}
+}
+function startYouTubeProgressTracking() {
+  stopYouTubeProgressTracking();
+  ytProgressInterval = setInterval(saveYouTubeProgressTick, 5000);
+}
+function stopYouTubeProgressTracking() {
+  if (ytProgressInterval) { clearInterval(ytProgressInterval); ytProgressInterval = null; }
+}
+async function openYouTubeLightbox(item) {
+  ytLightboxItem = item;
   $("#yt-lightbox-title").textContent = item.title || "";
   $("#yt-lightbox-channel").textContent = item.channelTitle || "";
-  $("#yt-lightbox-player").innerHTML = `<iframe src="${YT}${item.id}?autoplay=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>`;
   $("#yt-lightbox").classList.remove("hidden");
   document.body.style.overflow = "hidden";
+
+  const playerEl = document.createElement("div");
+  playerEl.id = "yt-lightbox-player-el";
+  const container = $("#yt-lightbox-player");
+  container.innerHTML = "";
+  container.appendChild(playerEl);
+
+  const last = progressMap[progressKey(item)];
+  const startSeconds = last && last.progress < 95 ? Math.floor(last.timestamp || 0) : 0;
+
+  const YTApi = await loadYouTubeIframeAPI();
+  if (ytLightboxItem !== item) return; // closed before the API finished loading
+  ytLightboxPlayer = new YTApi.Player("yt-lightbox-player-el", {
+    videoId: item.id,
+    playerVars: { autoplay: 1, rel: 0, modestbranding: 1, start: startSeconds },
+    events: {
+      onStateChange: (e) => {
+        if (e.data === YTApi.PlayerState.PLAYING) startYouTubeProgressTracking();
+        else stopYouTubeProgressTracking();
+        if (e.data === YTApi.PlayerState.ENDED) saveYouTubeProgressTick();
+      },
+    },
+  });
 }
 function closeYouTubeLightbox() {
+  stopYouTubeProgressTracking();
+  if (ytLightboxPlayer) {
+    try {
+      const timestamp = ytLightboxPlayer.getCurrentTime();
+      const duration = ytLightboxPlayer.getDuration();
+      if (duration) saveYouTubeProgress(Math.min(100, (timestamp / duration) * 100), timestamp, duration);
+    } catch {}
+    try { ytLightboxPlayer.destroy(); } catch {}
+    ytLightboxPlayer = null;
+  }
+  ytLightboxItem = null;
   $("#yt-lightbox").classList.add("hidden");
   $("#yt-lightbox-player").innerHTML = "";
   document.body.style.overflow = "";
@@ -863,7 +982,7 @@ function renderRow(title, items, opts = {}) {
       }
       scroll.appendChild(card);
     }
-    else if (it.type === "youtube") scroll.appendChild(makeYouTubeCard(it));
+    else if (it.type === "youtube") scroll.appendChild(makeYouTubeCard(it, opts));
     else if (it.poster || it.backdrop) scroll.appendChild(makeCard(it, opts));
   });
   wrap.appendChild(scroll);
@@ -953,7 +1072,7 @@ async function renderHero(item) {
     const key = await fetchTrailerKey(item);
     if (key) {
       const muteParam = heroMuted ? 1 : 0;
-      trailerEl.innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      trailerEl.innerHTML = `<iframe src="${YT_EMBED}${key}?autoplay=1&mute=${muteParam}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
       // The hero trailer is a passive background, not something to click/hover
       // into — this also stops the browser's own hover media controls from
       // ever appearing, since those only show up on actual pointer interaction.
@@ -1116,10 +1235,10 @@ async function getNamedRecommendations() {
   const cw = getContinueWatching().slice(0, 2);
   cw.forEach(it => {
     const k = itemKey(it);
-    if (!seenSeed.has(k)) { seenSeed.add(k); seeds.push(it); }
+    if (!seenSeed.has(k) && it.type !== "youtube") { seenSeed.add(k); seeds.push(it); }
   });
   // Add one from My List
-  const fromList = myList.find(it => !seenSeed.has(itemKey(it)));
+  const fromList = myList.find(it => !seenSeed.has(itemKey(it)) && it.type !== "youtube");
   if (fromList) { seenSeed.add(itemKey(fromList)); seeds.push(fromList); }
   if (!seeds.length) return [];
 
@@ -2752,7 +2871,7 @@ async function openModal(item, opts = {}) {
   try {
     const key = await fetchTrailerKey(item);
     if (key) {
-      $("#modal-trailer").innerHTML = `<iframe src="${YT}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      $("#modal-trailer").innerHTML = `<iframe src="${YT_EMBED}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
     }
   } catch {}
 
@@ -3337,8 +3456,8 @@ async function getRecommendedForYou() {
   const seeds = [];
   const seen = new Set();
   const cw = getContinueWatching().slice(0, 3);
-  cw.forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k)) { seen.add(k); seeds.push(it); } });
-  myList.slice(-3).forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k)) { seen.add(k); seeds.push(it); } });
+  cw.forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "youtube") { seen.add(k); seeds.push(it); } });
+  myList.slice(-3).forEach(it => { const k = `${it.type}:${it.id}`; if (!seen.has(k) && it.type !== "youtube") { seen.add(k); seeds.push(it); } });
   if (!seeds.length) return [];
 
   const recs = new Map(); // key -> { item, score }
@@ -3376,6 +3495,7 @@ function getContinueWatching() {
       poster: v.poster, backdrop: v.backdrop, backdropMd: v.backdropMd,
       overview: v.overview, year: v.year, rating: v.rating,
       isMovie: v.isMovie, episodes: v.episodes,
+      channelTitle: v.channelTitle, publishedAt: v.publishedAt,
     }));
 }
 
