@@ -11,9 +11,9 @@ const YOUTUBE_API_KEY = "AIzaSyAKKU-KovcZzcvcXtUhuoUEsYBndxAOfjU";
 // playlist is used instead (e.g. a specific show/podcast playlist rather
 // than everything the channel posts).
 const YOUTUBE_CHANNELS = [
-  { key: "flagrant", label: "Flagrant", handle: "OfficialFlagrant" },
+  { key: "flagrant", label: "Flagrant", handle: "OfficialFlagrant", playlistId: "PL1JULMhsLAypfSsBputK5dah9WKASIo-v" }, // "Flagrant Full Episodes"
   { key: "mssp", label: "MSSP", handle: "MSsecretpod" },
-  { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "" }, // TODO: paste IGR's podcast playlist ID
+  { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "PLa0gskjtcZLw" }, // "The Palki Sharma Show"
 ];
 const PLAYER_COLOR = "E50914";
 // Optional: deploy the Cloudflare Worker in /worker and put its URL here to
@@ -3169,7 +3169,7 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
-    allowfullscreen referrerpolicy="no-referrer"></iframe>
+    allowfullscreen referrerpolicy="origin"></iframe>
     <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
   $("#modal").scrollTop = 0;
 
