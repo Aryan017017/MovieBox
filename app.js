@@ -28,6 +28,13 @@ const PROXY_PLAYER_BASE = "";
 //   "vidsrc"   – different URL scheme, fewer params
 //   "embedsu"  – minimal, bare embed
 const PLAYER_PROVIDER = "videasy";
+// If the default provider never signals a single timeupdate within this
+// long (some devices/networks get stuck on the provider's own loading
+// screen — e.g. a caption fetch that silently hangs), automatically swap
+// to this fallback provider once and retry, rather than leaving the user
+// stuck on an infinite spinner.
+const PLAYER_FALLBACK_PROVIDER = "vidlink";
+const PLAYER_WATCHDOG_MS = 14000;
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
@@ -3138,6 +3145,29 @@ function computeNextEpisode(item, ctx) {
   return null;
 }
 
+let playerAttemptToken = 0;
+let playerWatchdogTimer = null;
+function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
+  const url = buildPlayerURL(item, ctx, seek, provider);
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `<iframe src="${url}"
+    allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
+    allowfullscreen referrerpolicy="origin"></iframe>
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
+  clearTimeout(playerWatchdogTimer);
+  // Only the initial attempt (on the default provider) gets watchdogged —
+  // once we've already fallen back once, the postMessage listener can't
+  // verify a different provider's liveness anyway (it only understands
+  // videasy's message shape, gated by origin), so there's nothing more to
+  // watch for.
+  if (armWatchdog && provider !== PLAYER_FALLBACK_PROVIDER) {
+    playerWatchdogTimer = setTimeout(() => {
+      if (token !== playerAttemptToken) return; // superseded — user closed or replayed
+      showToast("Having trouble loading — trying another server…");
+      launchPlayerAttempt(item, ctx, seek, PLAYER_FALLBACK_PROVIDER, token, false);
+    }, PLAYER_WATCHDOG_MS);
+  }
+}
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   // Smart resume: if user pressed main Play (no ctx) on TV and last episode was finished, jump to next
   const last = progressMap[progressKey(item)];
@@ -3163,14 +3193,10 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   if (item.type === "movie" && last?.progress >= 95 && seekOffsetSec == null) {
     seekOffsetSec = 0;
   }
-  const url = buildPlayerURL(item, ctx, seekOffsetSec);
   $("#modal-trailer").innerHTML = "";
   $(".modal-body").classList.add("playing");
-  $("#player-wrap").classList.add("active");
-  $("#player-wrap").innerHTML = `<iframe src="${url}"
-    allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
-    allowfullscreen referrerpolicy="origin"></iframe>
-    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
+  playerAttemptToken++;
+  launchPlayerAttempt(item, ctx, seekOffsetSec, PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER, playerAttemptToken, true);
   $("#modal").scrollTop = 0;
 
   playingItem = item;
@@ -3269,7 +3295,7 @@ function showUpNext() {
 
 let lastTimestamp = 0;
 
-function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
+function buildPlayerURL(item, ctx = {}, overrideSeek = null, providerOverride = null) {
   // Per-episode seek if applicable, else show-level
   let last;
   if (item.type === "tv" && ctx.episode) {
@@ -3282,7 +3308,8 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
   if (seek != null && last?.duration && seek > last.duration - 30) seek = null;
 
   // Provider-specific URL builders
-  const provider = PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER;
+  const provider = providerOverride || (PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER);
+  const base = providerOverride ? PLAYER_BASES[providerOverride] : PLAYER_BASE;
 
   if (provider === "vidlink") {
     // vidlink.pro - same path scheme as videasy
@@ -3293,21 +3320,21 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
     let path;
     if (item.type === "movie") path = `/movie/${item.id}`;
     else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    return `${PLAYER_BASE}${path}?${params.toString()}`;
+    return `${base}${path}?${params.toString()}`;
   }
 
   if (provider === "vidsrc") {
     let path;
     if (item.type === "movie") path = `/movie/${item.id}`;
     else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    return `${PLAYER_BASE}${path}`;
+    return `${base}${path}`;
   }
 
   if (provider === "embedsu") {
     let path;
     if (item.type === "movie") path = `/movie/${item.id}`;
     else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-    return `${PLAYER_BASE}${path}`;
+    return `${base}${path}`;
   }
 
   // Default: videasy
@@ -3322,10 +3349,11 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null) {
   let path;
   if (item.type === "movie") path = `/movie/${item.id}`;
   else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
-  return `${PLAYER_BASE}${path}?${params.toString()}`;
+  return `${base}${path}?${params.toString()}`;
 }
 
 function closeModal() {
+  clearTimeout(playerWatchdogTimer);
   $("#modal").classList.add("hidden");
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
@@ -3436,6 +3464,7 @@ window.addEventListener("message", (event) => {
   if (!d || d.event !== "timeupdate" || d.id == null) return;
   if (!currentItem) return;
   if (String(d.id) !== String(currentItem.id) || d.mediaType !== currentItem.type) return; // stale event from a previous title
+  clearTimeout(playerWatchdogTimer); // the player is alive — no need for the fallback watchdog
   if (privacy.pauseProgress) return;  // privacy: skip progress saves
 
   const timestamp = d.currentTime || 0;
@@ -3655,6 +3684,7 @@ function openTitle(item) {
 }
 
 function closeModalSilent() {
+  clearTimeout(playerWatchdogTimer);
   $("#modal").classList.add("hidden");
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
