@@ -1383,7 +1383,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   font-size: 16px; transition: all 180ms;
 }
 .modal-hero-buttons .rating-btn.rated {
-  background: var(--accent); border-color: var(--accent);
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
   transform: scale(1.08);
 }
 
@@ -1794,7 +1794,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   color: #fff; font-weight: 800; font-size: 16px;
 }
 .mylist-cell.selected .mylist-checkbox {
-  background: var(--accent); border-color: var(--accent);
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
 }
 
 /* ================ Sparkles ================ */
@@ -1852,8 +1852,8 @@ body.bedtime #hero-trailer { opacity: 0.7; }
   overflow: hidden; text-overflow: ellipsis;
 }
 .lib-act:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.25); }
-.lib-act.done, .lib-act.resume { background: var(--accent); border-color: var(--accent); }
-.lib-act.done:hover, .lib-act.resume:hover { background: #c9070e; }
+.lib-act.done, .lib-act.resume { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.lib-act.done:hover, .lib-act.resume:hover { background: var(--accent-hover); }
 
 /* ================ ACHIEVEMENTS ================ */
 .ach-summary {
