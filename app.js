@@ -1275,7 +1275,12 @@ async function showHome() {
     if (continueItems.length) rows.appendChild(renderRow("Continue Watching", continueItems, { showProgress: true }));
     if (myList.length) rows.appendChild(renderRow("My List", myList));
 
-    // Recommended for You with named "Because you watched X" rows
+    // Recommended for You: one blended, scored row from all your seeds
+    getRecommendedForYou().then(items => {
+      if (items.length) rows.appendChild(renderRow("Recommended for You", items));
+    }).catch(() => {});
+
+    // Then the named "Because you watched X" breakdowns per seed
     getNamedRecommendations().then(namedRows => {
       namedRows.forEach(({ label, items, subtitle }) => {
         if (!items.length) return;
