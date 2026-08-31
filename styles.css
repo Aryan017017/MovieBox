@@ -1340,7 +1340,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   transition: all 220ms;
 }
 .stat-card:hover { background: rgba(255,255,255,0.07); transform: translateY(-3px); border-color: rgba(255,255,255,0.18); }
-.stat-card-icon { font-size: 28px; margin-bottom: 8px; }
 .stat-card-num { font-size: 32px; font-weight: 800; color: #fff; }
 .stat-card-label { font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
@@ -1370,7 +1369,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   padding: 10px 16px; border-radius: 20px; font-size: 14px;
   display: flex; align-items: center; gap: 8px;
 }
-.rating-pill span { font-size: 18px; }
 
 /* ================ History date grouping ================ */
 .history-group-label {
@@ -1698,7 +1696,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 10px; padding: 22px;
 }
-.insight-icon { font-size: 48px; }
 .insight-headline { font-size: 22px; font-weight: 700; }
 .insight-sub { color: #ccc; font-size: 14px; margin-top: 4px; }
 
@@ -2031,7 +2028,6 @@ body.bedtime #hero-trailer { opacity: 0.7; }
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
 }
-.bh-icon { font-size: 32px; flex: 0 0 auto; }
 .bh-text { flex: 1; min-width: 0; }
 .bh-headline { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
 .bh-sub { font-size: 13px; color: #999; line-height: 1.4; }
