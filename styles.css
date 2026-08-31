@@ -1387,31 +1387,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   transform: scale(1.08);
 }
 
-/* ================ Per-season progress bars ================ */
-.season-progress-bars {
-  margin-top: 18px; padding: 16px; border-radius: 12px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-}
-.season-progress-title {
-  font-size: 12px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1.5px; color: #999; margin-bottom: 12px;
-}
-.season-progress-row {
-  display: grid; grid-template-columns: 40px 1fr 70px;
-  align-items: center; gap: 12px; margin-bottom: 8px;
-}
-.season-progress-row:last-child { margin-bottom: 0; }
-.sp-label { font-weight: 700; font-size: 14px; }
-.sp-bar {
-  height: 6px; background: rgba(255,255,255,0.1);
-  border-radius: 3px; overflow: hidden;
-}
-.sp-bar > div { height: 100%; background: var(--accent); transition: width 360ms var(--ease); }
-.sp-count { font-size: 12px; color: #999; text-align: right; }
-.season-progress-row.done .sp-label { color: #46d369; }
-.season-progress-row.done .sp-bar > div { background: #46d369; }
-.season-progress-row.done .sp-count { color: #46d369; }
 
 /* ================ New Episode badge ================ */
 .new-episode-badge {
@@ -2066,17 +2041,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   font-size: 10px; font-weight: 800;
   padding: 3px 8px; border-radius: 3px;
   letter-spacing: 0.5px; z-index: 4;
-}
-
-/* ================ Sparkle effect ================ */
-.sparkle-particle {
-  position: fixed; pointer-events: none; z-index: 10001;
-  font-size: 14px; animation: sparkle 800ms ease-out forwards;
-}
-@keyframes sparkle {
-  0% { opacity: 1; transform: translate(0,0) scale(0); }
-  50% { opacity: 1; transform: translate(var(--dx), var(--dy)) scale(1); }
-  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.5); }
 }
 
 @media (max-width: 640px) {
