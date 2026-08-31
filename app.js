@@ -554,6 +554,16 @@ function pseudoAge(item) {
 function escapeHTML(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
+// Maps a raw fetch/API error into something worth showing someone who
+// isn't going to know what "TMDB 429" means.
+function friendlyErrorMessage(e) {
+  const msg = e?.message || "";
+  if (/429/.test(msg)) return "Too many requests right now — please wait a moment and try again.";
+  if (/40[13]/.test(msg)) return "Couldn't load this — there's a problem with the data source.";
+  if (/TMDB|YouTube API/.test(msg)) return "Couldn't load this right now. Please try again.";
+  if (/Failed to fetch|NetworkError|network/i.test(msg)) return "You appear to be offline. Check your connection and try again.";
+  return "Something went wrong loading this page.";
+}
 
 // ---------- Dominant-color extraction ----------
 const colorCache = new Map();
@@ -899,7 +909,7 @@ async function showYouTubeChannelPage(key) {
     const { items } = await fetchYouTubeChannelRow(cfg, 50);
     allVideos = items;
   } catch (e) {
-    grid.innerHTML = `<div class="empty">Couldn't load videos: ${escapeHTML(e.message)}</div>`;
+    grid.innerHTML = `<div class="empty">Couldn't load videos: ${escapeHTML(friendlyErrorMessage(e))}</div>`;
     return;
   }
   function renderGrid(list) {
@@ -1300,7 +1310,7 @@ async function showHome() {
       rows.appendChild(renderRow(g.name, data.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     }
   } catch (e) {
-    rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
+    rows.innerHTML = `<div class="empty">${escapeHTML(friendlyErrorMessage(e))}</div>`;
   }
 }
 
@@ -1390,7 +1400,7 @@ async function showCategory(type, genreId = null) {
       }
     }
   } catch (e) {
-    rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
+    rows.innerHTML = `<div class="empty">${escapeHTML(friendlyErrorMessage(e))}</div>`;
   }
 }
 
@@ -1414,7 +1424,7 @@ async function showNewPopular() {
     rows.appendChild(renderRow("Coming Soon (Movies)", upMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     rows.appendChild(renderRow("Airing Today (TV)", upTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
     rows.appendChild(renderRow("Newly Released", latestMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
-  } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
+  } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(friendlyErrorMessage(e))}</div>`; }
 }
 
 async function showPerson(personId) {
@@ -1502,7 +1512,7 @@ async function showPerson(personId) {
     });
     rows.appendChild(grid);
   } catch (e) {
-    rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`;
+    rows.innerHTML = `<div class="empty">${escapeHTML(friendlyErrorMessage(e))}</div>`;
   }
 }
 
@@ -2720,7 +2730,7 @@ async function searchAll(query) {
       grid.appendChild(cell);
     });
     rows.appendChild(grid);
-  } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(e.message)}</div>`; }
+  } catch (e) { rows.innerHTML = `<div class="empty">${escapeHTML(friendlyErrorMessage(e))}</div>`; }
 }
 
 // TMDB genre lists (movie + tv)
