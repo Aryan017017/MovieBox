@@ -1270,7 +1270,11 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   cursor: pointer; opacity: 0; transition: opacity 180ms, transform 180ms, border-color 180ms;
   z-index: 5; line-height: 1; padding: 0;
 }
-.card:hover .cw-dismiss { opacity: 1; }
+.card:hover .cw-dismiss, .yt-card:hover .cw-dismiss { opacity: 1; }
+.yt-card .cw-meta {
+  bottom: auto; top: 8px; padding: 0 34px 0 10px;
+}
+.yt-card .yt-play-badge { z-index: 1; }
 .cw-dismiss:hover { border-color: #fff; transform: scale(1.1); background: rgba(229,9,20,0.9); }
 
 /* ================ Progress ring on hover ================ */
@@ -2061,6 +2065,11 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), filter 0.4s var(--ease-soft);
   filter: brightness(0.85) blur(1.5px);
   outline: 2px solid transparent;
+  /* Rows can mix yt-cards with taller poster .card siblings (e.g. Continue
+     Watching) — flex's default cross-axis stretch would otherwise pull this
+     to the poster's height, distorting the 16:9 thumbnail (cover-cropped
+     into a near-square). Opt out so it always keeps its own proportions. */
+  align-self: flex-start;
 }
 .yt-card.img-loaded { filter: brightness(1) blur(0); }
 .row-scroll .yt-card:hover, .row-scroll .yt-card:focus-visible {
