@@ -553,7 +553,7 @@ button { font-family: inherit; }
 .cast-card .cast-img {
   width: 110px; height: 110px; border-radius: 50%;
   background-size: cover; background-position: center;
-  background-color: #222; margin-bottom: 8px;
+  background-color: var(--bg-2); margin-bottom: 8px;
   border: 2px solid transparent; transition: border-color 0.2s;
 }
 .cast-card:hover .cast-img { border-color: rgba(255,255,255,0.6); }

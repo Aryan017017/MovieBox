@@ -3007,9 +3007,14 @@ async function openModal(item, opts = {}) {
           card.className = "cast-card";
           const img = c.profile_path ? `${IMG}/w185${c.profile_path}` : "";
           card.innerHTML = `
-            <div class="cast-img" style="background-image:url('${img}')"></div>
+            <div class="cast-img"></div>
             <div class="cast-name">${escapeHTML(c.name)}</div>
             ${c.character ? `<div class="cast-char">${escapeHTML(c.character)}</div>` : ""}`;
+          if (img) {
+            const castImgEl = card.querySelector(".cast-img");
+            castImgEl.dataset.bg = img;
+            lazyImageObserver.observe(castImgEl);
+          }
           card.addEventListener("click", () => {
             const pid = c.id;
             closeModalNav();
@@ -3073,7 +3078,7 @@ async function loadEpisodes(tvId, seasonNum) {
       }
       div.innerHTML = `
         <div class="episode-num">${ep.episode_number}</div>
-        <div class="episode-thumb" style="background-image:url('${thumb}')">${barHTML}</div>
+        <div class="episode-thumb">${barHTML}</div>
         <div class="episode-info">
           <div class="ep-head">
             <span class="ep-title">${escapeHTML(ep.name || "Episode " + ep.episode_number)}</span>
@@ -3081,6 +3086,11 @@ async function loadEpisodes(tvId, seasonNum) {
           </div>
           <div class="ep-overview">${escapeHTML(ep.overview || "")}</div>
         </div>`;
+      if (thumb) {
+        const thumbEl = div.querySelector(".episode-thumb");
+        thumbEl.dataset.bg = thumb;
+        lazyImageObserver.observe(thumbEl);
+      }
       div.addEventListener("click", () => startPlayer(currentItem, { season: seasonNum, episode: ep.episode_number }));
       list.appendChild(div);
     });
@@ -3094,7 +3104,7 @@ function makeSimilarCard(item) {
   div.className = "similar-card";
   const bg = item.backdropMd || item.backdrop || item.poster;
   div.innerHTML = `
-    <div class="sim-img" style="background-image:url('${bg || ""}')">
+    <div class="sim-img">
       <div class="sim-title-overlay">${escapeHTML(item.title || "")}</div>
     </div>
     <div class="sim-body">
@@ -3105,6 +3115,11 @@ function makeSimilarCard(item) {
       </div>
       <div class="sim-overview">${escapeHTML(item.overview || "")}</div>
     </div>`;
+  if (bg) {
+    const imgEl = div.querySelector(".sim-img");
+    imgEl.dataset.bg = bg;
+    lazyImageObserver.observe(imgEl);
+  }
   div.addEventListener("click", () => openModal(item));
   div.querySelector(".sim-add").addEventListener("click", (e) => {
     e.stopPropagation();
