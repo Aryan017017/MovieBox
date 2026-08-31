@@ -407,6 +407,9 @@ async function trackAffinityForItem(item) {
   } catch {}
 }
 function itemKey(item) { return `${item.type}:${item.id}`; }
+function typeLabel(item) {
+  return item.type === "tv" ? "Series" : item.type === "youtube" ? "Video" : "Movie";
+}
 function getTags(item) { return tagsMap[itemKey(item)] || []; }
 function setTags(item, tags) {
   if (!tags || !tags.length) delete tagsMap[itemKey(item)];
@@ -1485,7 +1488,7 @@ async function showPerson(personId) {
       const cell = document.createElement("div"); cell.className = "search-cell";
       cell.appendChild(makeCard(it));
       const meta = document.createElement("div"); meta.className = "search-meta";
-      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
+      meta.innerHTML = `<span class="type-pill">${typeLabel(it)}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
       const title = document.createElement("div"); title.className = "search-title";
       title.textContent = it.title;
       cell.appendChild(title); cell.appendChild(meta);
@@ -1784,7 +1787,7 @@ function showLibrary(tab) {
     cell.appendChild(makeCard(item, { showProgress: tab === "watching" }));
     const meta = document.createElement("div");
     meta.className = "search-meta";
-    let label = item.type === "tv" ? "Series" : "Movie";
+    let label = typeLabel(item);
     if (v?.season && v?.episode) label += ` · S${v.season}E${v.episode}`;
     meta.innerHTML = `<span class="type-pill">${label}</span><span>${item.year || ""}</span>`;
     const title = document.createElement("div");
@@ -2642,7 +2645,7 @@ function showMyList() {
     cell.appendChild(makeCard(it));
     const meta = document.createElement("div");
     meta.className = "search-meta";
-    meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span><span>${it.year || ""}</span>`;
+    meta.innerHTML = `<span class="type-pill">${typeLabel(it)}</span><span>${it.year || ""}</span>`;
     const title = document.createElement("div");
     title.className = "search-title";
     title.textContent = it.title;
@@ -2712,7 +2715,7 @@ async function searchAll(query) {
       cell.appendChild(makeCard(it));
       const meta = document.createElement("div");
       meta.className = "search-meta";
-      meta.innerHTML = `<span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
+      meta.innerHTML = `<span class="type-pill">${typeLabel(it)}</span>${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}<span>${it.year || ""}</span>`;
       const title = document.createElement("div");
       title.className = "search-title";
       title.textContent = it.title;
@@ -3765,7 +3768,7 @@ async function showSuggestions(q) {
         <div class="sug-info">
           <div class="sug-title">${escapeHTML(it.title)}</div>
           <div class="sug-meta">
-            <span class="type-pill">${it.type === "tv" ? "Series" : "Movie"}</span>
+            <span class="type-pill">${typeLabel(it)}</span>
             ${it.rating ? `<span class="rating-star">★ ${it.rating}</span>` : ""}
             <span>${it.year || ""}</span>
           </div>
