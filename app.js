@@ -1518,7 +1518,7 @@ function showHistory() {
   if (!entries.length) {
     rows.innerHTML += `
       <div class="empty-state">
-        <div class="empty-icon">⏱</div>
+        <div class="empty-icon">—</div>
         <h2>No history yet</h2>
         <p>Anything you watch will be tracked here so you can pick up where you left off.</p>
       </div>`;
@@ -1898,7 +1898,7 @@ function showPrivacy() {
       </div>
       <div class="privacy-toggle">
         <div>
-          <div class="pt-title">⏱ Session tracking</div>
+          <div class="pt-title">Session tracking</div>
           <div class="pt-desc">Record viewing sessions for time-of-day insights</div>
         </div>
         <label class="toggle"><input type="checkbox" id="t-session" ${!privacy.pauseSession ? "checked" : ""}/><span class="toggle-slider"></span></label>
