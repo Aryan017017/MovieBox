@@ -73,7 +73,7 @@ button { font-family: inherit; }
   padding: 40px 34px; box-shadow: var(--shadow-lg);
   text-align: left;
 }
-.login-card h2 { font-size: 26px; margin-bottom: 22px; text-align: left; }
+.login-card h2 { font-family: var(--font-display); font-size: 26px; margin-bottom: 22px; text-align: left; }
 .login-error {
   background: rgba(229,9,20,0.15); border: 1px solid rgba(229,9,20,0.5);
   color: #ff6b6f; font-size: 13px; padding: 10px 12px; border-radius: 6px;
@@ -264,8 +264,8 @@ button { font-family: inherit; }
   opacity: 0; pointer-events: none;
 }
 .hero-content h1 {
-  font-size: 64px; font-weight: 800; margin-bottom: 18px;
-  letter-spacing: -0.03em; line-height: 1.05;
+  font-family: var(--font-display); font-size: 60px; font-weight: 800; margin-bottom: 18px;
+  letter-spacing: -0.01em; line-height: 1.05;
   text-shadow: 2px 4px 12px rgba(0,0,0,0.6);
 }
 .hero-content .title-logo {
@@ -363,7 +363,8 @@ button { font-family: inherit; }
   padding: 0 4%; margin-bottom: 14px; gap: 16px;
 }
 .row h2 {
-  font-size: 22px;
+  font-family: var(--font-display);
+  font-size: 23px;
   font-weight: 700; letter-spacing: -0.01em;
 }
 .row-progress { display: flex; gap: 4px; flex-shrink: 0; }
@@ -617,8 +618,9 @@ button { font-family: inherit; }
   position: absolute; left: 6%; right: 6%; bottom: 32px; z-index: 2;
 }
 .modal-hero-content h2 {
-  font-size: 40px; font-weight: 800; margin-bottom: 22px;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 38px; font-weight: 800; margin-bottom: 22px;
+  letter-spacing: -0.01em;
   text-shadow: 2px 4px 12px rgba(0,0,0,0.7);
 }
 .modal-hero-content h2.has-logo {
@@ -771,7 +773,7 @@ button { font-family: inherit; }
 .episode-info .ep-runtime { color: var(--muted); font-size: 14px; }
 .episode-info .ep-overview { color: var(--muted); font-size: 14px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
-.similar-section h3 { font-size: 26px; font-weight: 700; margin: 40px 0 18px; letter-spacing: -0.01em; }
+.similar-section h3 { font-family: var(--font-display); font-size: 26px; font-weight: 700; margin: 40px 0 18px; letter-spacing: -0.01em; }
 .similar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .similar-card {
   background: var(--bg-3); border-radius: 10px; overflow: hidden;
@@ -1026,12 +1028,14 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   padding: 0 4%; margin-bottom: 24px;
 }
 .page-header h1 {
-  font-size: 36px; font-weight: 700; letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 36px; font-weight: 700; letter-spacing: -0.01em;
 }
 .page-subheader {
   padding: 0 4%; margin: 48px 0 4px;
 }
 .page-subheader h2 {
+  font-family: var(--font-display);
   font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
 }
 .empty-state {
@@ -1338,7 +1342,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .stat-card-label { font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
 .stats-section { padding: 0 4%; margin-bottom: 32px; }
-.stats-section h2 { font-size: 22px; margin-bottom: 16px; }
+.stats-section h2 { font-family: var(--font-display); font-size: 22px; margin-bottom: 16px; }
 .stats-feature-card {
   position: relative; height: 220px; border-radius: 12px; overflow: hidden;
   cursor: pointer; transition: transform 220ms;
