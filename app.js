@@ -15,7 +15,7 @@ const YOUTUBE_CHANNELS = [
   { key: "mssp", label: "MSSP", handle: "MSsecretpod" },
   { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "PLa0gskjtcZLw" }, // "The Palki Sharma Show"
 ];
-const PLAYER_COLOR = "E50914";
+const PLAYER_COLOR = "D9A441";
 // Optional: deploy the Cloudflare Worker in /worker and put its URL here to
 // route the player through a popup-shielding proxy. Leave "" to disable.
 const PROXY_PLAYER_BASE = "";
