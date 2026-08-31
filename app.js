@@ -320,15 +320,15 @@ function computeAchievementStats() {
   let streak = 0; let cur = new Date(); cur.setHours(0,0,0,0);
   if (!dayBucket.has(cur.getTime())) cur.setDate(cur.getDate() - 1);
   while (dayBucket.has(cur.getTime())) { streak++; cur.setDate(cur.getDate() - 1); }
-  // Genres count
+  // Genres count — real TMDB genre IDs captured while watching (see genreIds
+  // on the progress entry), not just a proxy based on watch count
   const genres = new Set();
-  // For movie/tv genres we'd need TMDB call - approximate from cached
-  // Use ratings count + tags count
+  entries.forEach(([, v]) => (v.genreIds || []).forEach(g => genres.add(g)));
   return {
     totalHours: totalSecs / 3600,
     finished, finishedMovies, finishedShows,
     totalEpisodes, rewatches, streak,
-    genreCount: genres.size + Math.min(8, Math.round(entries.length / 5)), // rough
+    genreCount: genres.size,
     ratingsCount: Object.keys(ratingsMap).length,
     tagCount: new Set(Object.values(tagsMap).flat()).size,
     maxBinge: computeMaxBinge(),
@@ -3513,6 +3513,7 @@ window.addEventListener("message", (event) => {
     overview: currentItem.overview, year: currentItem.year, rating: currentItem.rating,
     itemType: currentItem.type, itemId: currentItem.id,
     isMovie: currentItem.isMovie, episodes: currentItem.episodes,
+    genreIds: modalDetails?.genres?.map(g => g.id) || progressMap[progressKey(currentItem)]?.genreIds,
   };
   // Per-episode progress tracking (Netflix-style: every watched episode keeps its own bar)
   if (currentItem.type === "tv" && episode) {
