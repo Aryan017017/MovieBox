@@ -91,7 +91,6 @@ const GENRES_MOVIE = [
 const STORAGE = {
   progress: "moviebox:progress",
   list: "moviebox:mylist",
-  profile: "moviebox:profile",
   onboarded: "moviebox:onboarded",
   ratings: "moviebox:ratings",
   dismissed: "moviebox:dismissed",
@@ -3985,6 +3984,7 @@ async function enterApp(user) {
   route();
   renderBudgetGauge();
   maybeShowOnboarding();
+  maybeShowYearRecap();
   setTimeout(maybeShowResumePrompt, 1800);
 }
 
@@ -3994,6 +3994,17 @@ function maybeShowOnboarding() {
     showToast("Tip: hover a poster to preview · type to search · Esc closes any modal");
     localStorage.setItem(STORAGE.onboarded, "1");
   }, 1200);
+}
+function maybeShowYearRecap() {
+  const year = String(new Date().getFullYear());
+  if (localStorage.getItem(STORAGE.recapShown) === year) return;
+  const yearStart = new Date(+year, 0, 1).getTime();
+  const hasActivity = Object.values(progressMap).some(v => v.title && (v.updatedAt || 0) >= yearStart);
+  if (!hasActivity) return;
+  setTimeout(() => {
+    showToast(`Your ${year} Recap is ready — find it from Stats or the footer`);
+    localStorage.setItem(STORAGE.recapShown, year);
+  }, 3000);
 }
 function setProfileMenuOpen(open) {
   $("#profile-pill").classList.toggle("open", open);
