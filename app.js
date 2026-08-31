@@ -280,29 +280,29 @@ function setStatusOverride(item, status) {
 
 // ===== Achievements catalog =====
 const ACHIEVEMENTS = [
-  { id: "h100",   icon: "⏱",  title: "Century Club",       desc: "100 hours watched",            check: (s) => s.totalHours >= 100 },
-  { id: "h500",   icon: "🎬", title: "Cinephile",          desc: "500 hours watched",            check: (s) => s.totalHours >= 500 },
-  { id: "h1000",  icon: "👑", title: "Master Watcher",     desc: "1000 hours watched",           check: (s) => s.totalHours >= 1000 },
+  { id: "h100",   icon: "C",  title: "Century Club",       desc: "100 hours watched",            check: (s) => s.totalHours >= 100 },
+  { id: "h500",   icon: "CI", title: "Cinephile",          desc: "500 hours watched",            check: (s) => s.totalHours >= 500 },
+  { id: "h1000",  icon: "MW", title: "Master Watcher",     desc: "1000 hours watched",           check: (s) => s.totalHours >= 1000 },
   { id: "fin5",   icon: "✓",  title: "Finisher",           desc: "5 titles finished",            check: (s) => s.finished >= 5 },
-  { id: "fin25",  icon: "🏆", title: "Closer",             desc: "25 titles finished",           check: (s) => s.finished >= 25 },
-  { id: "fin100", icon: "🎖", title: "Marathon",           desc: "100 titles finished",          check: (s) => s.finished >= 100 },
-  { id: "ser5",   icon: "📺", title: "Series Veteran",     desc: "5 series finished",            check: (s) => s.finishedShows >= 5 },
-  { id: "ser20",  icon: "📚", title: "Showrunner",         desc: "20 series finished",           check: (s) => s.finishedShows >= 20 },
-  { id: "mov50",  icon: "🎥", title: "Movie Buff",         desc: "50 movies watched",            check: (s) => s.finishedMovies >= 50 },
-  { id: "ep100",  icon: "🍿", title: "Episode Eater",      desc: "100 episodes watched",         check: (s) => s.totalEpisodes >= 100 },
-  { id: "ep500",  icon: "🥇", title: "Episode Champion",   desc: "500 episodes watched",         check: (s) => s.totalEpisodes >= 500 },
-  { id: "str7",   icon: "🔥", title: "Week Streak",        desc: "Watched 7 days in a row",      check: (s) => s.streak >= 7 },
-  { id: "str30",  icon: "🌋", title: "Month Streak",       desc: "Watched 30 days in a row",     check: (s) => s.streak >= 30 },
+  { id: "fin25",  icon: "CL", title: "Closer",             desc: "25 titles finished",           check: (s) => s.finished >= 25 },
+  { id: "fin100", icon: "MA", title: "Marathon",           desc: "100 titles finished",          check: (s) => s.finished >= 100 },
+  { id: "ser5",   icon: "SV", title: "Series Veteran",     desc: "5 series finished",            check: (s) => s.finishedShows >= 5 },
+  { id: "ser20",  icon: "SR", title: "Showrunner",         desc: "20 series finished",           check: (s) => s.finishedShows >= 20 },
+  { id: "mov50",  icon: "MB", title: "Movie Buff",         desc: "50 movies watched",            check: (s) => s.finishedMovies >= 50 },
+  { id: "ep100",  icon: "EE", title: "Episode Eater",      desc: "100 episodes watched",         check: (s) => s.totalEpisodes >= 100 },
+  { id: "ep500",  icon: "EC", title: "Episode Champion",   desc: "500 episodes watched",         check: (s) => s.totalEpisodes >= 500 },
+  { id: "str7",   icon: "7",  title: "Week Streak",        desc: "Watched 7 days in a row",      check: (s) => s.streak >= 7 },
+  { id: "str30",  icon: "30", title: "Month Streak",       desc: "Watched 30 days in a row",     check: (s) => s.streak >= 30 },
   { id: "rw1",    icon: "↻",  title: "First Rewatch",      desc: "Rewatched a title",            check: (s) => s.rewatches >= 1 },
-  { id: "rw10",   icon: "♾",  title: "Comfort Watcher",    desc: "Rewatched 10 titles",          check: (s) => s.rewatches >= 10 },
-  { id: "gen5",   icon: "🎭", title: "Genre Explorer",     desc: "Watched 5 different genres",   check: (s) => s.genreCount >= 5 },
-  { id: "gen10",  icon: "🌈", title: "Genre Connoisseur",  desc: "Watched 10 different genres",  check: (s) => s.genreCount >= 10 },
-  { id: "rate10", icon: "⭐", title: "Critic",             desc: "Rated 10 titles",              check: (s) => s.ratingsCount >= 10 },
-  { id: "rate50", icon: "📝", title: "Reviewer",           desc: "Rated 50 titles",              check: (s) => s.ratingsCount >= 50 },
-  { id: "tag5",   icon: "🏷", title: "Organizer",          desc: "Used 5 different tags",        check: (s) => s.tagCount >= 5 },
-  { id: "binge",  icon: "💥", title: "Binge Master",       desc: "4+ episodes in one session",   check: (s) => s.maxBinge >= 4 },
-  { id: "night",  icon: "🌙", title: "Night Owl",          desc: "10 late-night sessions",       check: (s) => s.nightSessions >= 10 },
-  { id: "morn",   icon: "☀️", title: "Early Bird",         desc: "10 morning sessions",          check: (s) => s.morningSessions >= 10 },
+  { id: "rw10",   icon: "∞",  title: "Comfort Watcher",    desc: "Rewatched 10 titles",          check: (s) => s.rewatches >= 10 },
+  { id: "gen5",   icon: "GE", title: "Genre Explorer",     desc: "Watched 5 different genres",   check: (s) => s.genreCount >= 5 },
+  { id: "gen10",  icon: "GC", title: "Genre Connoisseur",  desc: "Watched 10 different genres",  check: (s) => s.genreCount >= 10 },
+  { id: "rate10", icon: "★",  title: "Critic",             desc: "Rated 10 titles",              check: (s) => s.ratingsCount >= 10 },
+  { id: "rate50", icon: "★★", title: "Reviewer",           desc: "Rated 50 titles",              check: (s) => s.ratingsCount >= 50 },
+  { id: "tag5",   icon: "OR", title: "Organizer",          desc: "Used 5 different tags",        check: (s) => s.tagCount >= 5 },
+  { id: "binge",  icon: "BM", title: "Binge Master",       desc: "4+ episodes in one session",   check: (s) => s.maxBinge >= 4 },
+  { id: "night",  icon: "NO", title: "Night Owl",          desc: "10 late-night sessions",       check: (s) => s.nightSessions >= 10 },
+  { id: "morn",   icon: "EB", title: "Early Bird",         desc: "10 morning sessions",          check: (s) => s.morningSessions >= 10 },
 ];
 
 function computeAchievementStats() {
@@ -754,7 +754,7 @@ function makeCard(item, opts = {}) {
       card.style.opacity = "0";
       card.style.transform = "scale(0.85)";
       setTimeout(() => card.remove(), 220);
-      showToast("🙈 Hidden");
+      showToast("Hidden");
     }
   });
   card.addEventListener("click", () => openModal(item));
@@ -773,13 +773,13 @@ function makeCard(item, opts = {}) {
         const renderTrailer = () => {
           wrap.innerHTML = `
             <iframe src="${YT_EMBED}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
-            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "🔇" : "🔊"}</button>`;
+            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "✕" : "♪"}</button>`;
           const muteBtn = wrap.querySelector(".card-mute");
           muteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             cardMuted = !cardMuted;
             postYTCommand(wrap.querySelector("iframe"), cardMuted ? "mute" : "unMute");
-            muteBtn.textContent = cardMuted ? "🔇" : "🔊";
+            muteBtn.textContent = cardMuted ? "✕" : "♪";
             muteBtn.title = cardMuted ? "Unmute" : "Mute";
             muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
           });
@@ -1211,7 +1211,7 @@ async function fetchTrailerKey(item) {
 
 $("#mute-btn").addEventListener("click", () => {
   heroMuted = !heroMuted;
-  $("#mute-btn").textContent = heroMuted ? "🔇" : "🔊";
+  $("#mute-btn").textContent = heroMuted ? "✕" : "♪";
   $("#mute-btn").setAttribute("aria-label", heroMuted ? "Unmute" : "Mute");
   postYTCommand($("#hero-trailer iframe"), heroMuted ? "mute" : "unMute");
 });
@@ -1409,7 +1409,7 @@ async function showNewPopular() {
     const trendItems = trending.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r));
     renderHero(trendItems.find(i => i.backdrop) || trendItems[0]);
     rows.innerHTML = "";
-    rows.appendChild(renderRow("🔥 Trending Today", trendItems));
+    rows.appendChild(renderRow("Trending Today", trendItems));
     rows.appendChild(renderRow("Top 10 Today", trendItems.slice(0, 10), { top10: true }));
     rows.appendChild(renderRow("Coming Soon (Movies)", upMovies.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "movie"))));
     rows.appendChild(renderRow("Airing Today (TV)", upTV.results.filter(r => r.backdrop_path && r.poster_path).map(r => normalizeTMDB(r, "tv"))));
@@ -1641,7 +1641,7 @@ function showHiddenTitles() {
     <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>`;
   const keys = Object.keys(hiddenMap);
   if (!keys.length) {
-    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">🙈</div><h2>Nothing hidden</h2><p>Use "Not interested" on cards to hide titles from your home rows.</p></div>`;
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">—</div><h2>Nothing hidden</h2><p>Use "Not interested" on cards to hide titles from your home rows.</p></div>`;
     return;
   }
   const grid = document.createElement("div");
@@ -1670,11 +1670,11 @@ async function showByTag(tag) {
   document.body.classList.add("no-hero");
   stopHeroTrailer();
   const rows = $("#rows");
-  rows.innerHTML = `<div class="page-header"><h1>🏷 ${escapeHTML(tag)}</h1>
+  rows.innerHTML = `<div class="page-header"><h1>${escapeHTML(tag)}</h1>
     <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>`;
   const keys = Object.keys(tagsMap).filter(k => (tagsMap[k] || []).includes(tag));
   if (!keys.length) {
-    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">🏷</div><h2>No titles tagged "${escapeHTML(tag)}"</h2></div>`;
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">—</div><h2>No titles tagged "${escapeHTML(tag)}"</h2></div>`;
     return;
   }
   const grid = document.createElement("div");
@@ -1714,7 +1714,7 @@ function renderBudgetGauge() {
     </div>
     <div class="bg-text">
       <div class="bg-num">${hours.toFixed(1)}h / ${monthlyGoal.hours}h</div>
-      <div class="bg-label">${pct >= 100 ? "🎉 Goal reached!" : "this month"}</div>
+      <div class="bg-label">${pct >= 100 ? "Goal reached!" : "this month"}</div>
     </div>`;
   fab.addEventListener("click", () => navTo("#/stats"));
   document.body.appendChild(fab);
@@ -1748,15 +1748,15 @@ function showLibrary(tab) {
   const tabs = [
     { id: "watching",   icon: "▶",  label: "Currently Watching", count: counts.watching },
     { id: "rewatching", icon: "↻",  label: "Rewatching",         count: counts.rewatching },
-    { id: "plan",       icon: "📌", label: "Plan to Watch",       count: counts.plan },
+    { id: "plan",       icon: "▷",  label: "Plan to Watch",       count: counts.plan },
     { id: "completed",  icon: "✓",  label: "Completed",           count: counts.completed },
     { id: "dropped",    icon: "✕",  label: "Dropped",             count: counts.dropped },
   ];
   rows.innerHTML = `<div class="page-header"><h1>Your Library</h1>
     <div class="page-header-actions">
-      <a href="#/achievements" class="page-action-btn">🏆 Achievements</a>
-      <a href="#/stats" class="page-action-btn">📊 Stats</a>
-      <a href="#/privacy" class="page-action-btn">🔒 Privacy</a>
+      <a href="#/achievements" class="page-action-btn">Achievements</a>
+      <a href="#/stats" class="page-action-btn">Stats</a>
+      <a href="#/privacy" class="page-action-btn">Privacy</a>
     </div></div>
     <div class="library-tabs">
       ${tabs.map(t => `<a href="#/library/${t.id}" class="lib-tab${t.id === tab ? " active" : ""}">
@@ -1770,7 +1770,7 @@ function showLibrary(tab) {
     const emptyMsg = {
       watching:   { icon: "▶",  msg: "Nothing in progress. Start a movie or show to see it here." },
       rewatching: { icon: "↻",  msg: "No rewatches yet. Restart a finished title to track it." },
-      plan:       { icon: "📌", msg: "Your plan-to-watch list is empty. Add titles via My List." },
+      plan:       { icon: "▷",  msg: "Your plan-to-watch list is empty. Add titles via My List." },
       completed:  { icon: "✓",  msg: "No completed titles yet. Finish something to see it here." },
       dropped:    { icon: "✕",  msg: "Nothing dropped. Titles abandoned for 14+ days appear here." },
     }[tab] || { icon: "?", msg: "Empty." };
@@ -1869,7 +1869,7 @@ function showAchievements() {
     card.className = "ach-card" + (isLocked ? " locked" : "");
     const unlockedDate = achievements[a.id] ? humanWhen(achievements[a.id]) : "";
     card.innerHTML = `
-      <div class="ach-card-icon">${isLocked ? "🔒" : a.icon}</div>
+      <div class="ach-card-icon">${isLocked ? "—" : a.icon}</div>
       <div class="ach-card-title">${escapeHTML(a.title)}</div>
       <div class="ach-card-desc">${escapeHTML(a.desc)}</div>
       ${isLocked ? "" : `<div class="ach-card-date">Unlocked ${unlockedDate}</div>`}`;
@@ -1891,7 +1891,7 @@ function showPrivacy() {
       <p class="privacy-help">Pause any tracker. Past data is preserved; new data won't be recorded while paused.</p>
       <div class="privacy-toggle">
         <div>
-          <div class="pt-title">📊 Progress tracking</div>
+          <div class="pt-title">Progress tracking</div>
           <div class="pt-desc">Save where you left off in titles you watch</div>
         </div>
         <label class="toggle"><input type="checkbox" id="t-progress" ${!privacy.pauseProgress ? "checked" : ""}/><span class="toggle-slider"></span></label>
@@ -1905,7 +1905,7 @@ function showPrivacy() {
       </div>
       <div class="privacy-toggle">
         <div>
-          <div class="pt-title">📜 History entries</div>
+          <div class="pt-title">History entries</div>
           <div class="pt-desc">Add new titles to your watch history</div>
         </div>
         <label class="toggle"><input type="checkbox" id="t-history" ${!privacy.pauseHistory ? "checked" : ""}/><span class="toggle-slider"></span></label>
@@ -1919,9 +1919,9 @@ function showPrivacy() {
     <div class="privacy-section">
       <h2>Bulk Actions</h2>
       <div class="privacy-bulk">
-        <button class="btn-secondary" id="p-export">📥 Export All Data</button>
+        <button class="btn-secondary" id="p-export">Export All Data</button>
         <button class="btn-secondary" id="p-wipe-history">Clear History Only</button>
-        <button class="btn-secondary danger" id="p-wipe-all">⚠ Wipe Everything</button>
+        <button class="btn-secondary danger" id="p-wipe-all">Wipe Everything</button>
       </div>
     </div>`;
   // Wire toggles
@@ -1974,7 +1974,7 @@ function showPrivacy() {
     showPrivacy();
   });
   $("#p-wipe-all").addEventListener("click", () => {
-    if (!confirm("⚠ WIPE EVERYTHING for this profile? Cannot be undone.")) return;
+    if (!confirm("WIPE EVERYTHING for this profile? Cannot be undone.")) return;
     if (!confirm("Really sure? All progress, lists, ratings, tags, journal, achievements gone.")) return;
     [STORAGE.progress, STORAGE.list, STORAGE.ratings, STORAGE.dismissed, STORAGE.hidden, STORAGE.tags, STORAGE.journal, STORAGE.rewatch, STORAGE.sessions, STORAGE.goal, STORAGE.achievements, STORAGE.affinityActors, STORAGE.affinityDirectors, STORAGE.status]
       .forEach(k => localStorage.removeItem(profileStorageKey(k)));
@@ -1992,15 +1992,15 @@ async function showStats() {
   const rows = $("#rows");
   rows.innerHTML = `<div class="page-header"><h1>Your Stats</h1>
     <div class="page-header-actions">
-      <a href="#/library/watching" class="page-action-btn">📚 Library</a>
-      <a href="#/achievements" class="page-action-btn">🏆 Achievements</a>
-      <a href="#/recap" class="page-action-btn">✨ ${new Date().getFullYear()} Recap</a>
-      <a href="#/privacy" class="page-action-btn">🔒 Privacy</a>
+      <a href="#/library/watching" class="page-action-btn">Library</a>
+      <a href="#/achievements" class="page-action-btn">Achievements</a>
+      <a href="#/recap" class="page-action-btn">${new Date().getFullYear()} Recap</a>
+      <a href="#/privacy" class="page-action-btn">Privacy</a>
     </div></div>`;
 
   const entries = Object.entries(progressMap).filter(([, v]) => v.title);
   if (!entries.length) {
-    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">📊</div><h2>No stats yet</h2><p>Watch something to see your stats.</p></div>`;
+    rows.innerHTML += `<div class="empty-state"><div class="empty-icon">—</div><h2>No stats yet</h2><p>Watch something to see your stats.</p></div>`;
     return;
   }
 
@@ -2052,13 +2052,13 @@ async function showStats() {
       <div class="stats-hero-label">hours watched all-time</div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-card-icon">🔥</div><div class="stat-card-num">${streak}</div><div class="stat-card-label">Day Streak</div></div>
-      <div class="stat-card"><div class="stat-card-icon">📅</div><div class="stat-card-num">${monthHours}h</div><div class="stat-card-label">This Month</div></div>
-      <div class="stat-card"><div class="stat-card-icon">✅</div><div class="stat-card-num">${finished}</div><div class="stat-card-label">Finished</div></div>
-      <div class="stat-card"><div class="stat-card-icon">⏱</div><div class="stat-card-num">${inProgress}</div><div class="stat-card-label">In Progress</div></div>
-      <div class="stat-card"><div class="stat-card-icon">🎬</div><div class="stat-card-num">${movies}</div><div class="stat-card-label">Movies</div></div>
-      <div class="stat-card"><div class="stat-card-icon">📺</div><div class="stat-card-num">${shows}</div><div class="stat-card-label">TV Shows</div></div>
-      <div class="stat-card"><div class="stat-card-icon">🎯</div><div class="stat-card-num">${finishRate}%</div><div class="stat-card-label">Finish Rate</div></div>
+      <div class="stat-card"><div class="stat-card-num">${streak}</div><div class="stat-card-label">Day Streak</div></div>
+      <div class="stat-card"><div class="stat-card-num">${monthHours}h</div><div class="stat-card-label">This Month</div></div>
+      <div class="stat-card"><div class="stat-card-num">${finished}</div><div class="stat-card-label">Finished</div></div>
+      <div class="stat-card"><div class="stat-card-num">${inProgress}</div><div class="stat-card-label">In Progress</div></div>
+      <div class="stat-card"><div class="stat-card-num">${movies}</div><div class="stat-card-label">Movies</div></div>
+      <div class="stat-card"><div class="stat-card-num">${shows}</div><div class="stat-card-label">TV Shows</div></div>
+      <div class="stat-card"><div class="stat-card-num">${finishRate}%</div><div class="stat-card-label">Finish Rate</div></div>
     </div>
     ${topShow ? `
     <div class="stats-section">
@@ -2076,9 +2076,9 @@ async function showStats() {
     <div class="stats-section">
       <h2>Your Ratings</h2>
       <div class="ratings-summary">
-        <div class="rating-pill"><span>👍</span> ${Object.values(ratingsMap).filter(r => r === "up").length} liked</div>
-        <div class="rating-pill"><span>❤️</span> ${Object.values(ratingsMap).filter(r => r === "love").length} loved</div>
-        <div class="rating-pill"><span>👎</span> ${Object.values(ratingsMap).filter(r => r === "down").length} disliked</div>
+        <div class="rating-pill">${Object.values(ratingsMap).filter(r => r === "up").length} liked</div>
+        <div class="rating-pill">${Object.values(ratingsMap).filter(r => r === "love").length} loved</div>
+        <div class="rating-pill">${Object.values(ratingsMap).filter(r => r === "down").length} disliked</div>
       </div>
     </div>`;
 
@@ -2170,7 +2170,6 @@ async function showStats() {
     todSection.className = "stats-section";
     todSection.innerHTML = `<h2>When You Watch</h2>
       <div class="insight-card">
-        <div class="insight-icon">${todInsight.icon}</div>
         <div class="insight-text">
           <div class="insight-headline">${escapeHTML(todInsight.headline)}</div>
           <div class="insight-sub">${escapeHTML(todInsight.sub)}</div>
@@ -2186,7 +2185,6 @@ async function showStats() {
     bSec.className = "stats-section";
     bSec.innerHTML = `<h2>Your Habits</h2><div class="behavior-grid">
       ${insights.map(i => `<div class="behavior-card">
-        <div class="bh-icon">${i.icon}</div>
         <div class="bh-text">
           <div class="bh-headline">${escapeHTML(i.headline)}</div>
           <div class="bh-sub">${escapeHTML(i.sub)}</div>
@@ -2237,12 +2235,12 @@ async function showStats() {
     </div>
     ${monthlyGoal ? `<div class="goal-progress">
       <div class="goal-bar"><div style="width:${Math.min(100, Math.round((monthHours / monthlyGoal.hours) * 100))}%"></div></div>
-      <div class="goal-text">${monthHours}h / ${monthlyGoal.hours}h ${monthHours >= monthlyGoal.hours ? "🎉 Reached!" : ""}</div>
+      <div class="goal-text">${monthHours}h / ${monthlyGoal.hours}h ${monthHours >= monthlyGoal.hours ? "Reached!" : ""}</div>
     </div>` : ""}
     <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn-secondary" id="export-csv">📥 Export CSV</button>
-      <button class="btn-secondary" id="export-json">📥 Export JSON</button>
-      <a href="#/hidden" class="btn-secondary" style="text-decoration:none;">🙈 Hidden Titles (${Object.keys(hiddenMap).length})</a>
+      <button class="btn-secondary" id="export-csv">Export CSV</button>
+      <button class="btn-secondary" id="export-json">Export JSON</button>
+      <a href="#/hidden" class="btn-secondary" style="text-decoration:none;">Hidden Titles (${Object.keys(hiddenMap).length})</a>
     </div>`;
   rows.appendChild(goalSection);
   $("#goal-save").addEventListener("click", () => {
@@ -2342,7 +2340,6 @@ function computeTimeOfDayInsight() {
     else buckets[3]++;
   });
   const labels = ["Morning watcher", "Afternoon viewer", "Evening watcher", "Late-night binger"];
-  const icons = ["☀️", "🌤", "🌆", "🌙"];
   const subs = [
     "You usually watch before noon — early bird energy.",
     "You catch up after lunch most days.",
@@ -2358,7 +2355,7 @@ function computeTimeOfDayInsight() {
   const weekday = wkdays.slice(1, 6).reduce((a, b) => a + b, 0);
   let extraSub = "";
   if (weekend > weekday * 0.4) extraSub = " You're also a weekend binger.";
-  return { headline: labels[idx], sub: subs[idx] + extraSub, icon: icons[idx] };
+  return { headline: labels[idx], sub: subs[idx] + extraSub };
 }
 
 function computeBehaviorInsights() {
@@ -2366,7 +2363,7 @@ function computeBehaviorInsights() {
   // Binge detection
   const maxBinge = computeMaxBinge();
   if (maxBinge >= 3) insights.push({
-    icon: "💥", headline: `${maxBinge} episodes in one binge`,
+    headline: `${maxBinge} episodes in one binge`,
     sub: maxBinge >= 5 ? "You're a serious binge-watcher." : "You like a good back-to-back run.",
   });
   // Abandon count
@@ -2376,7 +2373,7 @@ function computeBehaviorInsights() {
     return days > 14 && v.progress > 1 && v.progress < 60;
   }).length;
   if (dropped > 0) insights.push({
-    icon: "📭", headline: `${dropped} title${dropped > 1 ? "s" : ""} waiting`,
+    headline: `${dropped} title${dropped > 1 ? "s" : ""} waiting`,
     sub: `Started but untouched for 2+ weeks. Pick one back up?`,
   });
   // Drop-off pattern (TV shows: avg episode where dropped)
@@ -2384,7 +2381,7 @@ function computeBehaviorInsights() {
   if (tvDropped.length >= 3) {
     const avgEp = Math.round(tvDropped.reduce((a, v) => a + (v.episode || 1), 0) / tvDropped.length);
     insights.push({
-      icon: "📉", headline: `Drops shows around episode ${avgEp}`,
+      headline: `Drops shows around episode ${avgEp}`,
       sub: "If you make it past this point, you usually finish.",
     });
   }
@@ -2395,7 +2392,6 @@ function computeBehaviorInsights() {
   const tvFinish = tvEntries.length ? Math.round(tvEntries.filter(v => v.progress >= 95).length / tvEntries.length * 100) : 0;
   if (movieEntries.length >= 3 && tvEntries.length >= 3 && Math.abs(movieFinish - tvFinish) > 15) {
     insights.push({
-      icon: movieFinish > tvFinish ? "🎬" : "📺",
       headline: movieFinish > tvFinish ? "You finish movies more than shows" : "You finish shows more than movies",
       sub: `${movieFinish}% movies vs ${tvFinish}% shows completion rate.`,
     });
@@ -2407,7 +2403,7 @@ function computeBehaviorInsights() {
     .reduce((a, s) => a + ((s.end || s.start) - s.start) / 1000, 0);
   if (weekendSecs > weekdaySecs * 0.6 && (weekendSecs + weekdaySecs) > 7200) {
     insights.push({
-      icon: "🎉", headline: "Weekend binger",
+      headline: "Weekend binger",
       sub: `Most of your watching happens Saturday/Sunday.`,
     });
   }
@@ -2454,7 +2450,7 @@ function downloadFile(name, content, type) {
   const a = document.createElement("a"); a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast(`✓ Exported ${name}`);
+  showToast(`Exported ${name}`);
 }
 
 // ============ YEAR RECAP ============
@@ -2793,7 +2789,7 @@ function renderTagsAndJournal(item) {
       <textarea class="tj-textarea" id="tj-note" placeholder="A line about this title…" maxlength="280">${escapeHTML(note)}</textarea>
     </div>
     <div class="tj-row tj-actions">
-      <button class="tj-not-interested btn-secondary" id="tj-hide">🙈 Not Interested</button>
+      <button class="tj-not-interested btn-secondary" id="tj-hide">Not Interested</button>
     </div>`;
   container.appendChild(wrap);
   // Tag add
@@ -2824,7 +2820,7 @@ function renderTagsAndJournal(item) {
   // Hide
   wrap.querySelector("#tj-hide").addEventListener("click", () => {
     if (isHidden(item)) { unhideItem(item); showToast("Restored"); }
-    else { hideItem(item); showToast("🙈 Hidden — won't appear in your home rows"); }
+    else { hideItem(item); showToast("Hidden — won't appear in your home rows"); }
   });
 }
 
@@ -2849,9 +2845,9 @@ function renderRatingButtons(item) {
   buttonsRow.querySelectorAll(".rating-btn").forEach(n => n.remove());
   const cur = getRating(item);
   const opts = [
-    { val: "down", icon: "👎", title: "Not for me" },
-    { val: "up", icon: "👍", title: "I like this" },
-    { val: "love", icon: "❤️", title: "Love this!" },
+    { val: "down", icon: "−", title: "Not for me" },
+    { val: "up", icon: "+", title: "I like this" },
+    { val: "love", icon: "♥", title: "Love this!" },
   ];
   opts.forEach(o => {
     const b = document.createElement("button");
@@ -3409,7 +3405,7 @@ $("#hero-play-btn").addEventListener("click", () => {
 
 $("#modal-mute-btn").addEventListener("click", () => {
   modalMuted = !modalMuted;
-  $("#modal-mute-btn").textContent = modalMuted ? "🔇" : "🔊";
+  $("#modal-mute-btn").textContent = modalMuted ? "✕" : "♪";
   $("#modal-mute-btn").setAttribute("aria-label", modalMuted ? "Unmute" : "Mute");
   postYTCommand($("#modal-trailer iframe"), modalMuted ? "mute" : "unMute");
 });
