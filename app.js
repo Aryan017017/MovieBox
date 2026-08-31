@@ -2955,6 +2955,7 @@ async function openModal(item, opts = {}) {
   updateListButton();
   renderRatingButtons(item);
   renderNewEpisodeBadge(item);
+  renderTagsAndJournal(item);
 
   // Trailer in modal hero
   try {
