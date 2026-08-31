@@ -430,7 +430,7 @@ function unhideItem(item) { delete hiddenMap[itemKey(item)]; saveHidden(); }
 function checkBedtime() {
   const h = new Date().getHours();
   const auto = (h >= 23 || h < 5);
-  document.body.classList.toggle("bedtime", bedtimeOn || auto);
+  $("#app").classList.toggle("bedtime", bedtimeOn || auto);
 }
 setInterval(checkBedtime, 60000);
 function getRating(item) { return ratingsMap[`${item.type}:${item.id}`] || null; }
@@ -2266,8 +2266,9 @@ async function showStats() {
     saveGoal();
     showToast("Goal saved");
     showStats();
+    renderBudgetGauge();
   });
-  $("#goal-clear")?.addEventListener("click", () => { monthlyGoal = null; saveGoal(); showStats(); });
+  $("#goal-clear")?.addEventListener("click", () => { monthlyGoal = null; saveGoal(); showStats(); renderBudgetGauge(); });
   $("#export-csv").addEventListener("click", exportCSV);
   $("#export-json").addEventListener("click", exportJSON);
 
@@ -3982,6 +3983,7 @@ async function enterApp(user) {
   avatar.style.cssText += `display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;background:var(--accent);`;
   $("#profile-menu-email").textContent = user.email || "";
   route();
+  renderBudgetGauge();
   maybeShowOnboarding();
   setTimeout(maybeShowResumePrompt, 1800);
 }

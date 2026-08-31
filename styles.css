@@ -1754,7 +1754,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 /* ================ Floating budget gauge ================ */
 .budget-gauge-fab {
   position: fixed; bottom: 24px; right: 24px; z-index: 999;
-  background: rgba(15,15,15,0.95); backdrop-filter: blur(8px);
+  background: rgba(var(--hero-tint-rgb),0.95); backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 30px; padding: 8px 16px 8px 8px;
   display: flex; align-items: center; gap: 12px;
@@ -1808,10 +1808,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   0% { transform: translate(0, 0) scale(1); opacity: 1; }
   100% { transform: translate(var(--dx, 30px), var(--dy, -30px)) scale(0); opacity: 0; }
 }
-
-/* ================ Bedtime mode ================ */
-body.bedtime { filter: brightness(0.78) saturate(0.9); }
-body.bedtime #hero-trailer { opacity: 0.7; }
 
 /* ================ LIBRARY (smart status tabs) ================ */
 .library-tabs {
@@ -2209,11 +2205,17 @@ body.bedtime #hero-trailer { opacity: 0.7; }
 }
 
 /* ================ Bedtime mode (subtle dim only) ================ */
-body.bedtime { filter: brightness(0.92) sepia(0.04); }
-/* A CSS filter on an ancestor breaks the Fullscreen API for the embedded
-   player iframe (it can't escape the filtered element's containing block),
-   so drop the dim while a title is actually playing. */
-body.bedtime:has(.modal-body.playing) { filter: none; }
+/* Applied to #app rather than body: a CSS filter on an ancestor breaks the
+   Fullscreen API for the embedded player iframe (it can't escape the
+   filtered element's containing block) AND breaks position:fixed for any
+   descendant (it establishes a new containing block, so fixed-position
+   elements inside anchor to this box instead of the viewport). Toasts,
+   the budget gauge FAB, and similar are appended straight to <body>, so
+   keeping the filter scoped to #app leaves them unaffected either way.
+   Also drop the dim entirely while a title is actually playing. */
+#app.bedtime { filter: brightness(0.92) sepia(0.04); }
+#app.bedtime #hero-trailer { opacity: 0.7; }
+#app.bedtime:has(.modal-body.playing) { filter: none; }
 
 /* ================ Touch (no hover) ================ */
 @media (hover: none) and (pointer: coarse) {
