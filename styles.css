@@ -1056,25 +1056,12 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   margin-top: 60px;
 }
 .footer-inner { max-width: 1100px; margin: 0 auto; }
-.footer-socials {
-  display: flex; gap: 24px; font-size: 22px;
-  margin-bottom: 32px; color: #d4d4d4; cursor: pointer;
-}
-.footer-socials span { transition: color 0.2s, transform 0.2s; }
-.footer-socials span:hover { color: #fff; transform: translateY(-2px); }
-.footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+.footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .footer-grid a {
   font-size: 13px; color: var(--muted-2);
   transition: color 0.15s;
 }
-.footer-grid a:hover { color: #d4d4d4; text-decoration: underline; }
-.service-code {
-  background: transparent; border: 1px solid var(--muted-2); color: var(--muted-2);
-  padding: 9px 16px; cursor: pointer; margin-bottom: 32px; font-size: 13px;
-  font-family: inherit; border-radius: 2px;
-  transition: color 0.15s, border-color 0.15s;
-}
-.service-code:hover { color: #d4d4d4; border-color: #d4d4d4; }
+.footer-grid a:hover { color: var(--text-dim); text-decoration: underline; }
 .footer-copy { font-size: 12px; color: var(--muted-2); }
 
 /* ================ Page transitions ================ */
@@ -1260,10 +1247,8 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 
   /* Footer */
   #footer { padding: 50px 4% 40px; margin-top: 30px; }
-  .footer-socials { gap: 18px; font-size: 18px; margin-bottom: 22px; }
-  .footer-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
+  .footer-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; }
   .footer-grid a { font-size: 12px; }
-  .service-code { font-size: 12px; padding: 7px 12px; margin-bottom: 22px; }
   .footer-copy { font-size: 11px; }
 }
 
