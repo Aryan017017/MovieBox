@@ -628,11 +628,11 @@ function clampForTint({ r, g, b }) {
   return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
 }
 function applyHeroTint(color) {
-  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "10, 10, 10";
+  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "22, 20, 17";
   document.documentElement.style.setProperty("--hero-tint-rgb", rgb);
 }
 function applyModalTint(color) {
-  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "20, 20, 20";
+  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "30, 27, 23";
   document.documentElement.style.setProperty("--modal-tint-rgb", rgb);
 }
 
@@ -2156,7 +2156,7 @@ async function showStats() {
       <div class="genre-pie-wrap">
         <svg class="genre-pie" viewBox="0 0 200 200">
           ${segs.map(s => `<path d="${s.path}" fill="${s.color}"/>`).join("")}
-          <circle cx="100" cy="100" r="42" fill="#0a0a0a"/>
+          <circle cx="100" cy="100" r="42" fill="#1a1815"/>
           <text x="100" y="95" text-anchor="middle" fill="#fff" font-size="20" font-weight="800">${segs.length}</text>
           <text x="100" y="115" text-anchor="middle" fill="#999" font-size="11">genres</text>
         </svg>

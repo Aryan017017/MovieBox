@@ -106,7 +106,7 @@ button { font-family: inherit; }
   transition: background-color 0.4s var(--ease-soft), backdrop-filter 0.4s;
 }
 #navbar.scrolled {
-  background: rgba(10,10,10,0.85);
+  background: rgba(var(--hero-tint-rgb),0.85);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -160,7 +160,7 @@ button { font-family: inherit; }
 .search-box-wrap { position: relative; }
 .search-suggest {
   position: absolute; top: calc(100% + 8px); right: 0;
-  background: rgba(10,10,10,0.97); backdrop-filter: blur(20px);
+  background: rgba(var(--hero-tint-rgb),0.97); backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
   width: 380px; max-height: 480px; overflow-y: auto;
   box-shadow: var(--shadow-lg);
@@ -242,7 +242,7 @@ button { font-family: inherit; }
 }
 .hero-fade-left {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, rgba(10,10,10,0.95) 0%, rgba(10,10,10,0.6) 30%, rgba(10,10,10,0) 60%);
+  background: linear-gradient(90deg, rgba(var(--hero-tint-rgb),0.95) 0%, rgba(var(--hero-tint-rgb),0.6) 30%, rgba(var(--hero-tint-rgb),0) 60%);
   pointer-events: none;
 }
 /* Subtle ambient tint at the top of the rows section, fading out */
@@ -387,15 +387,15 @@ button { font-family: inherit; }
 
 .row-arrow {
   position: absolute; top: 0; bottom: 0; width: 4%;
-  background: linear-gradient(90deg, rgba(10,10,10,0.85), rgba(10,10,10,0.6));
+  background: linear-gradient(90deg, rgba(var(--hero-tint-rgb),0.85), rgba(var(--hero-tint-rgb),0.6));
   color: #fff; border: 0; cursor: pointer; z-index: 4;
   font-size: 32px; opacity: 0;
   transition: opacity 0.25s var(--ease), background 0.25s;
 }
 .row-wrap:hover .row-arrow { opacity: 1; }
 .row-arrow.left { left: 0; }
-.row-arrow.right { right: 0; background: linear-gradient(270deg, rgba(10,10,10,0.85), rgba(10,10,10,0.6)); }
-.row-arrow:hover { background: rgba(10,10,10,0.95); }
+.row-arrow.right { right: 0; background: linear-gradient(270deg, rgba(var(--hero-tint-rgb),0.85), rgba(var(--hero-tint-rgb),0.6)); }
+.row-arrow:hover { background: rgba(var(--hero-tint-rgb),0.95); }
 
 .card {
   flex: 0 0 12%; aspect-ratio: 2/3;
@@ -520,14 +520,14 @@ button { font-family: inherit; }
 /* Skeleton */
 .skeleton-row { margin: 36px 0; padding: 0 4%; }
 .skeleton-row .sk-title {
-  width: 220px; height: 26px; background: linear-gradient(90deg, #1a1a1a, #2a2a2a, #1a1a1a);
+  width: 220px; height: 26px; background: linear-gradient(90deg, #221f1a, #322d24, #221f1a);
   background-size: 200% 100%;
   margin-bottom: 16px; border-radius: 6px; animation: shimmer 1.8s infinite linear;
 }
 .skeleton-row .sk-cards { display: flex; gap: 6px; }
 .skeleton-row .sk-card {
   flex: 0 0 12%; aspect-ratio: 2/3; min-width: 180px;
-  background: linear-gradient(90deg, #1a1a1a, #242424, #1a1a1a);
+  background: linear-gradient(90deg, #221f1a, #2c2822, #221f1a);
   background-size: 200% 100%;
   border-radius: 6px;
   animation: shimmer 1.8s infinite linear;
@@ -738,10 +738,10 @@ button { font-family: inherit; }
 .season-pill:hover { border-color: #888; }
 .season-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
-.episode-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #2a2a2a; }
+.episode-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--bg-4); }
 .episode-item {
   display: grid; grid-template-columns: 40px 180px 1fr; gap: 18px;
-  padding: 20px 8px; border-bottom: 1px solid #2a2a2a;
+  padding: 20px 8px; border-bottom: 1px solid var(--bg-4);
   cursor: pointer; align-items: start;
   transition: background 0.2s;
 }
@@ -750,7 +750,7 @@ button { font-family: inherit; }
 .episode-thumb {
   width: 180px; height: 102px;
   background-size: cover; background-position: center;
-  border-radius: 6px; background-color: #111;
+  border-radius: 6px; background-color: var(--bg-2);
   position: relative;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
@@ -784,7 +784,7 @@ button { font-family: inherit; }
 }
 .similar-card:hover { background: var(--bg-4); transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .similar-card .sim-img {
-  aspect-ratio: 16/9; background-size: cover; background-position: center; background-color: #111;
+  aspect-ratio: 16/9; background-size: cover; background-position: center; background-color: var(--bg-2);
   position: relative; display: flex; align-items: flex-end;
 }
 .similar-card .sim-img::after {
@@ -891,7 +891,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 .history-row:hover { background: var(--bg-3); }
 .history-thumb {
   position: relative; width: 200px; aspect-ratio: 16/9;
-  background-size: cover; background-position: center; background-color: #111;
+  background-size: cover; background-position: center; background-color: var(--bg-2);
   border-radius: 6px; cursor: pointer; overflow: hidden;
 }
 .history-thumb .ep-progress {
@@ -1142,7 +1142,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .nav-left nav {
     display: flex; flex-direction: column; gap: 2px;
     position: fixed; top: var(--navbar-h); left: 0; right: 0; z-index: 49;
-    background: rgba(10,10,10,0.98); backdrop-filter: blur(10px);
+    background: rgba(var(--hero-tint-rgb),0.98); backdrop-filter: blur(10px);
     padding: 8px 4% 16px;
     max-height: 0; overflow: hidden;
     transition: max-height 0.25s var(--ease);
@@ -1180,7 +1180,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .hero-controls { bottom: 30%; }
   .mute-btn { width: 36px; height: 36px; font-size: 14px; }
   .age-badge { padding: 4px 12px 4px 10px; font-size: 13px; margin-left: 10px; }
-  .hero-fade-left { background: linear-gradient(180deg, rgba(10,10,10,0.4), rgba(10,10,10,0.95) 90%); }
+  .hero-fade-left { background: linear-gradient(180deg, rgba(var(--hero-tint-rgb),0.4), rgba(var(--hero-tint-rgb),0.95) 90%); }
 
   /* Rows */
   #rows { padding: 12px 0 60px; margin-top: -50px; }
@@ -1981,7 +1981,7 @@ body.bedtime #hero-trailer { opacity: 0.7; }
 .pr-thumb {
   width: 56px; height: 80px;
   background-size: cover; background-position: center;
-  background-color: #111; border-radius: 6px;
+  background-color: var(--bg-2); border-radius: 6px;
 }
 .pr-info { min-width: 0; }
 .pr-title {
