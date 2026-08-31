@@ -2805,7 +2805,7 @@ function renderTagsAndJournal(item) {
       <textarea class="tj-textarea" id="tj-note" placeholder="A line about this title…" maxlength="280">${escapeHTML(note)}</textarea>
     </div>
     <div class="tj-row tj-actions">
-      <button class="tj-not-interested btn-secondary" id="tj-hide">Not Interested</button>
+      <button class="tj-not-interested btn-secondary" id="tj-hide">${isHidden(item) ? "Restore" : "Not Interested"}</button>
     </div>`;
   container.appendChild(wrap);
   // Tag add
@@ -2837,6 +2837,7 @@ function renderTagsAndJournal(item) {
   wrap.querySelector("#tj-hide").addEventListener("click", () => {
     if (isHidden(item)) { unhideItem(item); showToast("Restored"); }
     else { hideItem(item); showToast("Hidden — won't appear in your home rows"); }
+    renderTagsAndJournal(item);
   });
 }
 
