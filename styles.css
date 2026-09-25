@@ -652,6 +652,16 @@ button { font-family: inherit; }
   transition: background 0.15s, transform 0.15s;
 }
 .player-fs-btn:hover { background: rgba(40,40,40,0.95); transform: scale(1.05); }
+.player-server-select {
+  position: absolute; bottom: 14px; right: 58px; z-index: 6;
+  height: 36px; padding: 0 10px; border-radius: 18px;
+  background: rgba(20,20,20,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+  font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+  backdrop-filter: blur(8px); max-width: 44vw;
+  transition: background 0.15s;
+}
+.player-server-select:hover { background: rgba(40,40,40,0.95); }
+.player-server-select:focus { outline: 1px solid var(--accent); }
 .player-overlay-skip {
   position: absolute; bottom: 14%; right: 24px; z-index: 6;
   background: rgba(0,0,0,0.8); color: #fff;
@@ -2068,8 +2078,10 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   /* Rows can mix yt-cards with taller poster .card siblings (e.g. Continue
      Watching) — flex's default cross-axis stretch would otherwise pull this
      to the poster's height, distorting the 16:9 thumbnail (cover-cropped
-     into a near-square). Opt out so it always keeps its own proportions. */
-  align-self: flex-start;
+     into a near-square). Opt out so it keeps its own proportions, and align
+     to the bottom (not the top) so it shares a baseline with the posters
+     instead of floating above a gap. */
+  align-self: flex-end;
 }
 .yt-card.img-loaded { filter: brightness(1) blur(0); }
 .row-scroll .yt-card:hover, .row-scroll .yt-card:focus-visible {

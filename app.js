@@ -35,6 +35,14 @@ const PLAYER_PROVIDER = "videasy";
 // stuck on an infinite spinner.
 const PLAYER_FALLBACK_PROVIDER = "vidlink";
 const PLAYER_WATCHDOG_MS = 14000;
+// Shown in the player's server-picker dropdown, in this order. `id` must
+// match a key in PLAYER_BASES / a branch in buildPlayerURL.
+const PLAYER_PROVIDERS = [
+  { id: "videasy", label: "Server 1 — Videasy" },
+  { id: "vidlink", label: "Server 2 — VidLink" },
+  { id: "vidsrc", label: "Server 3 — VidSrc" },
+  { id: "embedsu", label: "Server 4 — Embed.su" },
+];
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
@@ -107,6 +115,7 @@ const STORAGE = {
   affinityActors: "moviebox:actors", // { actorId: { name, count, profile_path, lastSeen } }
   affinityDirectors: "moviebox:directors",
   status: "moviebox:status",         // explicit status overrides { itemKey: "dropped" | "plan" }
+  playerProvider: "moviebox:playerProvider", // user's chosen server, overrides PLAYER_PROVIDER
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); scheduleCloudSync(); };
@@ -3178,15 +3187,30 @@ function computeNextEpisode(item, ctx) {
   return null;
 }
 
+function getSelectedProvider() {
+  const saved = localStorage.getItem(STORAGE.playerProvider);
+  return (saved && PLAYER_BASES[saved]) ? saved : PLAYER_PROVIDER;
+}
+
 let playerAttemptToken = 0;
 let playerWatchdogTimer = null;
+// The postMessage listener below only trusts messages from whichever origin
+// is actually loaded right now — updated on every launch since the user can
+// switch servers (each on its own domain) via the in-player dropdown.
+let activePlayerOrigin = PLAYER_ORIGIN;
+let activePlayerItem = null, activePlayerCtx = null, activePlayerSeek = null;
 function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
   const url = buildPlayerURL(item, ctx, seek, provider);
+  activePlayerOrigin = new URL(PLAYER_BASES[provider] || PLAYER_BASE).origin;
+  activePlayerItem = item; activePlayerCtx = ctx; activePlayerSeek = seek;
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
     allowfullscreen referrerpolicy="origin"></iframe>
-    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+    <select class="player-server-select" id="player-server-select" title="Choose server" aria-label="Choose server">
+      ${PLAYER_PROVIDERS.map(p => `<option value="${p.id}"${p.id === provider ? " selected" : ""}>${p.label}</option>`).join("")}
+    </select>`;
   clearTimeout(playerWatchdogTimer);
   // Only the initial attempt (on the default provider) gets watchdogged —
   // once we've already fallen back once, the postMessage listener can't
@@ -3201,6 +3225,16 @@ function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
     }, PLAYER_WATCHDOG_MS);
   }
 }
+// Delegated (the select is recreated on every launch): switching servers
+// remembers the choice and relaunches from roughly the same timestamp.
+document.addEventListener("change", (e) => {
+  if (!e.target.closest("#player-server-select")) return;
+  const provider = e.target.value;
+  localStorage.setItem(STORAGE.playerProvider, provider);
+  if (!activePlayerItem) return;
+  playerAttemptToken++;
+  launchPlayerAttempt(activePlayerItem, activePlayerCtx || {}, lastTimestamp || activePlayerSeek, provider, playerAttemptToken, true);
+});
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   // Smart resume: if user pressed main Play (no ctx) on TV and last episode was finished, jump to next
   const last = progressMap[progressKey(item)];
@@ -3229,7 +3263,7 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   $("#modal-trailer").innerHTML = "";
   $(".modal-body").classList.add("playing");
   playerAttemptToken++;
-  launchPlayerAttempt(item, ctx, seekOffsetSec, PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER, playerAttemptToken, true);
+  launchPlayerAttempt(item, ctx, seekOffsetSec, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), playerAttemptToken, true);
   $("#modal").scrollTop = 0;
 
   playingItem = item;
@@ -3341,7 +3375,7 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null, providerOverride = 
   if (seek != null && last?.duration && seek > last.duration - 30) seek = null;
 
   // Provider-specific URL builders
-  const provider = providerOverride || (PROXY_PLAYER_BASE ? "videasy" : PLAYER_PROVIDER);
+  const provider = providerOverride || (PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider());
   const base = providerOverride ? PLAYER_BASES[providerOverride] : PLAYER_BASE;
 
   if (provider === "vidlink") {
@@ -3487,7 +3521,7 @@ $("#add-list").addEventListener("click", (e) => { if (currentItem) { toggleList(
 
 // ---------- Watch Progress ----------
 window.addEventListener("message", (event) => {
-  if (event.origin !== PLAYER_ORIGIN) return;  // only trust the embedded player iframe
+  if (event.origin !== activePlayerOrigin) return;  // only trust the currently active player iframe
   let data = event.data;
   if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
   // The player wraps every event as {type:"PLAYER_EVENT", data:{event:"timeupdate", currentTime, duration, id, mediaType, season, episode}}
