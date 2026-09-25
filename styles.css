@@ -2,6 +2,8 @@
 :root {
   --hero-tint-rgb: 22, 20, 17;
   --modal-tint-rgb: 30, 27, 23;
+  --hero-glow-rgb: 217, 164, 65;
+  --glow-rgb: 217, 164, 65;
   --bg: #1a1815;
   --bg-2: #221f1a;
   --bg-3: #2c2822;
@@ -234,7 +236,15 @@ button { font-family: inherit; }
   width: 100%; height: 100%; border: 0;
   pointer-events: none;
   transform: scale(1.4);
+  /* YouTube's own chrome (a prev/pause/next-style transport strip) flashes
+     briefly on load even with controls=0 — a side effect of the loop=1 +
+     playlist=<same id> trick needed to loop a single video. Starting
+     invisible and fading in once that flash has resolved hides it behind
+     the still-visible backdrop image instead of exposing it. */
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-soft);
 }
+.hero-trailer iframe.trailer-ready { opacity: 1; }
 .hero-fade-bottom {
   position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
   background: linear-gradient(180deg, transparent, var(--bg) 92%);
@@ -244,6 +254,15 @@ button { font-family: inherit; }
   position: absolute; inset: 0;
   background: linear-gradient(90deg, rgba(var(--hero-tint-rgb),0.95) 0%, rgba(var(--hero-tint-rgb),0.6) 30%, rgba(var(--hero-tint-rgb),0) 60%);
   pointer-events: none;
+}
+/* Soft ambient spotlight in the title's dominant color, screen-blended so it
+   adds warmth without washing out the backdrop image underneath. */
+.hero::after {
+  content: ""; position: absolute; inset: 0; z-index: 1;
+  background: radial-gradient(ellipse 55% 65% at 18% 62%, rgba(var(--hero-glow-rgb),0.5), transparent 70%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transition: background 0.6s var(--ease-soft);
 }
 /* Subtle ambient tint at the top of the rows section, fading out */
 #rows { position: relative; }
@@ -412,13 +431,13 @@ button { font-family: inherit; }
 .card.img-loaded { filter: brightness(1) blur(0); }
 .row-scroll .card:hover, .row-scroll .card:focus-visible {
   outline-color: rgba(255,255,255,0.9);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 36px 6px rgba(var(--glow-rgb),0.45);
   transform: scale(1.08);
   z-index: 5;
 }
 .search-grid .card:hover, .search-grid .card:focus-visible {
   outline-color: rgba(255,255,255,0.9);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), 0 0 28px 4px rgba(var(--glow-rgb),0.4);
 }
 .card:focus-visible .card-info { opacity: 1; pointer-events: auto; }
 .card:focus { outline: none; }
@@ -469,7 +488,12 @@ button { font-family: inherit; }
   position: absolute; top: 50%; left: 50%;
   width: 280%; height: 110%; border: 0;
   transform: translate(-50%, -50%);
+  /* See .hero-trailer iframe: hides YouTube's own brief prev/pause/next
+     chrome flash behind the container's black background on load. */
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-soft);
 }
+.card-trailer iframe.trailer-ready { opacity: 1; }
 .card-mute {
   position: absolute; bottom: 8px; right: 8px; z-index: 4;
   width: 30px; height: 30px; border-radius: 50%;
@@ -607,7 +631,12 @@ button { font-family: inherit; }
 .modal-trailer iframe {
   width: 100%; height: 100%; border: 0;
   pointer-events: none; transform: scale(1.4);
+  /* See .hero-trailer iframe: hides YouTube's own brief prev/pause/next
+     chrome flash behind the modal backdrop image on load. */
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-soft);
 }
+.modal-trailer iframe.trailer-ready { opacity: 1; }
 .modal-hero-fade {
   position: absolute; inset: 0;
   background:

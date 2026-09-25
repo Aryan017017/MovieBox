@@ -74,6 +74,16 @@ const YT_EMBED = "https://www.youtube.com/embed/";
 function postYTCommand(iframe, func) {
   try { iframe?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args: [] }), "https://www.youtube.com"); } catch {}
 }
+// YouTube's own chrome briefly flashes a prev/pause/next-style transport
+// strip on load, even with controls=0 — a side effect of the loop=1 +
+// playlist=<same id> trick needed to loop a single video. The iframe starts
+// at opacity:0 (see CSS) so that flash stays hidden behind the still-visible
+// backdrop; this reveals it once the flash has had time to resolve. If the
+// iframe's already been replaced/removed by then, this is a harmless no-op.
+function revealTrailerAfterFlash(iframeEl) {
+  if (!iframeEl) return;
+  setTimeout(() => iframeEl.classList.add("trailer-ready"), 1800);
+}
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -574,16 +584,18 @@ function friendlyErrorMessage(e) {
 }
 
 // ---------- Dominant-color extraction ----------
-const colorCache = new Map();
-function extractDominantColor(url) {
+const rawColorCache = new Map();
+function sampleRawColor(url) {
   if (!url) return Promise.resolve(null);
-  if (colorCache.has(url)) return Promise.resolve(colorCache.get(url));
+  if (rawColorCache.has(url)) return Promise.resolve(rawColorCache.get(url));
   return new Promise((resolve) => {
-    // Note: TMDB's image CDN does not send CORS headers, so requesting the
-    // image as crossOrigin="anonymous" makes it fail to load at all. Loading
-    // it without crossOrigin still lets it render normally; the canvas read
-    // below just throws (caught) and we fall back to no tint.
+    // TMDB's image CDN does send Access-Control-Allow-Origin, so requesting
+    // it as crossOrigin="anonymous" both loads fine and leaves the canvas
+    // read below untainted. Without this the image still renders normally,
+    // but getImageData() throws (caught, falls back to no tint) — silently
+    // disabling every color-derived effect below.
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
         const W = 64, H = 64;
@@ -608,7 +620,7 @@ function extractDominantColor(url) {
           // Score favors saturation + count
           bucket.score += sat;
         }
-        if (!buckets.size) { colorCache.set(url, null); return resolve(null); }
+        if (!buckets.size) { rawColorCache.set(url, null); return resolve(null); }
         let best = null;
         for (const b of buckets.values()) if (!best || b.score > best.score) best = b;
         const color = {
@@ -616,17 +628,25 @@ function extractDominantColor(url) {
           g: Math.round(best.g / best.n),
           b: Math.round(best.b / best.n),
         };
-        // Boost saturation a bit & cap luminance so it always reads as a tint
-        const tweaked = clampForTint(color);
-        colorCache.set(url, tweaked);
-        resolve(tweaked);
+        rawColorCache.set(url, color);
+        resolve(color);
       } catch (e) {
-        colorCache.set(url, null);
+        rawColorCache.set(url, null);
         resolve(null);
       }
     };
-    img.onerror = () => { colorCache.set(url, null); resolve(null); };
+    img.onerror = () => { rawColorCache.set(url, null); resolve(null); };
     img.src = url;
+  });
+}
+const colorCache = new Map();
+function extractDominantColor(url) {
+  if (!url) return Promise.resolve(null);
+  if (colorCache.has(url)) return Promise.resolve(colorCache.get(url));
+  return sampleRawColor(url).then((raw) => {
+    const tweaked = raw ? clampForTint(raw) : null;
+    colorCache.set(url, tweaked);
+    return tweaked;
   });
 }
 function clampForTint({ r, g, b }) {
@@ -635,9 +655,28 @@ function clampForTint({ r, g, b }) {
   const scale = max > 0 ? 130 / max : 1;
   return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
 }
+const glowColorCache = new Map();
+// Brighter/more saturated than the background tint — meant to sit as a
+// hover box-shadow or a screen-blended spotlight, not a full-bleed wash.
+function extractGlowColor(url) {
+  if (!url) return Promise.resolve(null);
+  if (glowColorCache.has(url)) return Promise.resolve(glowColorCache.get(url));
+  return sampleRawColor(url).then((raw) => {
+    if (!raw) { glowColorCache.set(url, null); return null; }
+    const max = Math.max(raw.r, raw.g, raw.b);
+    const scale = max > 0 ? 190 / max : 1;
+    const glow = { r: Math.round(raw.r * scale), g: Math.round(raw.g * scale), b: Math.round(raw.b * scale) };
+    glowColorCache.set(url, glow);
+    return glow;
+  });
+}
 function applyHeroTint(color) {
   const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "22, 20, 17";
   document.documentElement.style.setProperty("--hero-tint-rgb", rgb);
+}
+function applyHeroGlow(color) {
+  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "217, 164, 65";
+  document.documentElement.style.setProperty("--hero-glow-rgb", rgb);
 }
 function applyModalTint(color) {
   const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "30, 27, 23";
@@ -656,6 +695,10 @@ const lazyImageObserver = new IntersectionObserver((entries) => {
         target.classList.add("img-loaded");
       };
       img.src = url;
+      if (target.dataset.glow) {
+        extractGlowColor(url).then(c => { if (c) target.style.setProperty("--glow-rgb", `${c.r}, ${c.g}, ${c.b}`); });
+        target.removeAttribute("data-glow");
+      }
       target.removeAttribute("data-bg");
       lazyImageObserver.unobserve(target);
     }
@@ -690,7 +733,7 @@ function makeCard(item, opts = {}) {
   card.dataset.itemId = item.id;
   card.dataset.itemType = item.type;
   const bg = item.poster || item.backdropMd || item.backdrop;
-  if (bg) { card.dataset.bg = bg; lazyImageObserver.observe(card); }
+  if (bg) { card.dataset.bg = bg; card.dataset.glow = "1"; lazyImageObserver.observe(card); }
   const key = progressKey(item);
   const p = progressMap[key];
   let progressBar = "", cwMeta = "", watchedBadge = "", rewatchBadge = "";
@@ -801,6 +844,7 @@ function makeCard(item, opts = {}) {
             muteBtn.title = cardMuted ? "Unmute" : "Mute";
             muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
           });
+          revealTrailerAfterFlash(wrap.querySelector("iframe"));
         };
         renderTrailer();
         card.appendChild(wrap);
@@ -1123,10 +1167,14 @@ async function renderHero(item) {
   const trailerEl = $("#hero-trailer");
   if (item.backdrop) preloadImage(item.backdrop);
   bg.style.backgroundImage = item.backdrop ? `url("${item.backdrop}")` : "";
-  // Reset then extract dominant color for ambient tint
+  // Reset then extract dominant color for ambient tint + glow
   applyHeroTint(null);
-  if (item.poster) extractDominantColor(item.poster).then(c => { if (heroItem === item) applyHeroTint(c); });
-  else if (item.backdrop) extractDominantColor(item.backdrop).then(c => { if (heroItem === item) applyHeroTint(c); });
+  applyHeroGlow(null);
+  const heroColorSrc = item.poster || item.backdrop;
+  if (heroColorSrc) {
+    extractDominantColor(heroColorSrc).then(c => { if (heroItem === item) applyHeroTint(c); });
+    extractGlowColor(heroColorSrc).then(c => { if (heroItem === item) applyHeroGlow(c); });
+  }
   trailerEl.innerHTML = "";
 
   const match = pseudoMatch(item);
@@ -1172,6 +1220,7 @@ async function renderHero(item) {
       // into — this also stops the browser's own hover media controls from
       // ever appearing, since those only show up on actual pointer interaction.
       trailerEl.style.pointerEvents = "none";
+      revealTrailerAfterFlash(trailerEl.querySelector("iframe"));
       // Let the trailer play a few seconds before easing the title/description
       // out of the way, Netflix-style.
       clearTimeout(heroFadeTimer);
@@ -2972,6 +3021,7 @@ async function openModal(item, opts = {}) {
     const key = await fetchTrailerKey(item);
     if (key) {
       $("#modal-trailer").innerHTML = `<iframe src="${YT_EMBED}${key}?autoplay=1&mute=${modalMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+      revealTrailerAfterFlash($("#modal-trailer iframe"));
     }
   } catch {}
 
