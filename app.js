@@ -1190,7 +1190,6 @@ function skeletonRow() {
 // ---------- Hero (with auto-trailer) ----------
 let heroMuted = true;
 let heroItem = null;
-let heroFadeTimer = null;
 let cardMuted = true;
 
 async function renderHero(item) {
@@ -1251,12 +1250,6 @@ async function renderHero(item) {
       // ever appearing, since those only show up on actual pointer interaction.
       trailerEl.style.pointerEvents = "none";
       revealTrailerAfterFlash(trailerEl.querySelector("iframe"));
-      // Let the trailer play a few seconds before easing the title/description
-      // out of the way, Netflix-style.
-      clearTimeout(heroFadeTimer);
-      heroFadeTimer = setTimeout(() => {
-        if (heroItem === item) $("#hero-content").classList.add("trailer-active");
-      }, 4000);
     }
   } catch {}
 }
@@ -1317,7 +1310,6 @@ $("#mute-btn").addEventListener("click", () => {
 function stopHeroTrailer() {
   $("#hero-trailer").innerHTML = "";
   heroItem = null;
-  clearTimeout(heroFadeTimer);
 }
 
 // Pause hero audio when scrolled out of view
