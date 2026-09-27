@@ -754,6 +754,11 @@ button { font-family: inherit; }
 .player-wrap iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
 
 .modal-info { padding: 0 6% 40px; margin-top: -8px; background: var(--bg-2); position: relative; z-index: 1; }
+/* The -8px above overlaps the (visible) hero's own fade for a seamless
+   transition, but once playing, .modal-hero is hidden and the player
+   takes its place — that same -8px then pulls this section up into the
+   flat video box instead, with almost no breathing room. */
+.modal-body.playing .modal-info { margin-top: 24px; }
 .modal-info-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 36px; margin-bottom: 32px; }
 .modal-meta {
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
