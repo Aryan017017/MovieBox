@@ -354,7 +354,7 @@ button { font-family: inherit; }
 
 /* ================ Rows ================ */
 #rows {
-  padding: 20px 0 80px; margin-top: -80px;
+  padding: 20px 0 80px; margin-top: 0;
   position: relative; z-index: 3;
 }
 .row {
@@ -1226,7 +1226,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .hero-fade { background: linear-gradient(180deg, rgba(var(--hero-tint-rgb),0.4), rgba(var(--hero-tint-rgb),0.95) 90%); }
 
   /* Rows */
-  #rows { padding: 12px 0 60px; margin-top: -50px; }
+  #rows { padding: 12px 0 60px; margin-top: 0; }
   .row { margin: 24px 0; }
   .row h2 { font-size: 17px; }
   .row-head { margin-bottom: 8px; }
