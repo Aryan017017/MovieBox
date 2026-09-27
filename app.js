@@ -932,6 +932,29 @@ function renderYouTubeChannelTiles(entries) {
   section.appendChild(wrap);
   return section;
 }
+async function showChannelsPage() {
+  setActive("channels");
+  document.body.classList.add("no-hero");
+  stopHeroTrailer();
+  const rows = $("#rows");
+  rows.innerHTML = `
+    <div class="page-header"><h1>Channels</h1>
+      <div class="page-header-actions"><a href="#/" class="page-action-btn">← Home</a></div></div>
+    <div id="channels-grid" class="yt-channels-grid"><div class="empty">Loading…</div></div>`;
+  const grid = $("#channels-grid");
+  if (!YOUTUBE_API_KEY) { grid.innerHTML = `<div class="empty">YouTube integration isn't configured.</div>`; return; }
+  try {
+    const results = await Promise.all(YOUTUBE_CHANNELS.map(cfg => fetchYouTubeChannelRow(cfg).catch(() => ({ label: cfg.label, items: [] }))));
+    grid.innerHTML = "";
+    YOUTUBE_CHANNELS.forEach((cfg, i) => {
+      const items = results[i].items;
+      if (items.length) grid.appendChild(makeChannelTile(cfg, items[0]));
+    });
+    if (!grid.children.length) grid.innerHTML = `<div class="empty">No channels available right now.</div>`;
+  } catch (e) {
+    grid.innerHTML = `<div class="empty">Couldn't load channels: ${escapeHTML(friendlyErrorMessage(e))}</div>`;
+  }
+}
 async function showYouTubeChannelPage(key) {
   setActive(null);
   document.body.classList.add("no-hero");
@@ -3727,6 +3750,7 @@ async function route() {
   else if (parts[0] === "privacy") { showPrivacy(); p = Promise.resolve(); }
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
   else if (parts[0] === "youtube" && parts[1]) p = showYouTubeChannelPage(parts[1]);
+  else if (parts[0] === "channels") p = showChannelsPage();
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
     $("#search").value = q;
@@ -3809,6 +3833,7 @@ $$("#navbar [data-nav]").forEach(a => {
     else if (nav === "movies") navTo("#/movies");
     else if (nav === "tv") navTo("#/tv");
     else if (nav === "new") navTo("#/new");
+    else if (nav === "channels") navTo("#/channels");
     else if (nav === "mylist") navTo("#/list");
     else if (nav === "history") { setProfileMenuOpen(false); navTo("#/history"); }
   });
