@@ -654,9 +654,11 @@ function extractDominantColor(url) {
   });
 }
 function clampForTint({ r, g, b }) {
-  // Darken the tint heavily so it acts as a subtle ambient hint, never dominant
+  // Darken the tint heavily so it acts as a subtle ambient hint, never dominant.
+  // 130 read as a strong, obviously-colored wash once the fade gradients (up
+  // to 0.95 opacity) were layered on top — this is meant to be barely there.
   const max = Math.max(r, g, b);
-  const scale = max > 0 ? 130 / max : 1;
+  const scale = max > 0 ? 55 / max : 1;
   return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
 }
 function applyHeroTint(color) {
