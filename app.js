@@ -78,6 +78,17 @@ const YT_EMBED = "https://www.youtube.com/embed/";
 function postYTCommand(iframe, func) {
   try { iframe?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args: [] }), "https://www.youtube.com"); } catch {}
 }
+// A real speaker glyph reads unambiguously as "sound" (unlike a bare ✕,
+// which looks identical to a close button) and — sized in `em` off
+// currentColor — drops into any of the differently-sized mute buttons
+// without per-button overrides.
+function volumeIconSVG(muted) {
+  const cone = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/>`;
+  const waves = muted
+    ? `<line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>`
+    : `<path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>`;
+  return `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block">${cone}${waves}</svg>`;
+}
 // YouTube's own chrome briefly flashes a prev/pause/next-style transport
 // strip on load, even with controls=0 — a side effect of the loop=1 +
 // playlist=<same id> trick needed to loop a single video. The iframe starts
@@ -807,13 +818,13 @@ function makeCard(item, opts = {}) {
         const renderTrailer = () => {
           wrap.innerHTML = `
             <iframe src="${YT_EMBED}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
-            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${cardMuted ? "✕" : "♪"}</button>`;
+            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${volumeIconSVG(cardMuted)}</button>`;
           const muteBtn = wrap.querySelector(".card-mute");
           muteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             cardMuted = !cardMuted;
             postYTCommand(wrap.querySelector("iframe"), cardMuted ? "mute" : "unMute");
-            muteBtn.textContent = cardMuted ? "✕" : "♪";
+            muteBtn.innerHTML = volumeIconSVG(cardMuted);
             muteBtn.title = cardMuted ? "Unmute" : "Mute";
             muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
           });
@@ -1298,7 +1309,7 @@ async function fetchTrailerKey(item) {
 
 $("#mute-btn").addEventListener("click", () => {
   heroMuted = !heroMuted;
-  $("#mute-btn").textContent = heroMuted ? "✕" : "♪";
+  $("#mute-btn").innerHTML = volumeIconSVG(heroMuted);
   $("#mute-btn").setAttribute("aria-label", heroMuted ? "Unmute" : "Mute");
   postYTCommand($("#hero-trailer iframe"), heroMuted ? "mute" : "unMute");
 });
@@ -3500,7 +3511,7 @@ $("#hero-play-btn").addEventListener("click", () => {
 
 $("#modal-mute-btn").addEventListener("click", () => {
   modalMuted = !modalMuted;
-  $("#modal-mute-btn").textContent = modalMuted ? "✕" : "♪";
+  $("#modal-mute-btn").innerHTML = volumeIconSVG(modalMuted);
   $("#modal-mute-btn").setAttribute("aria-label", modalMuted ? "Unmute" : "Mute");
   postYTCommand($("#modal-trailer iframe"), modalMuted ? "mute" : "unMute");
 });
