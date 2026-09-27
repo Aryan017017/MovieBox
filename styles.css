@@ -223,7 +223,13 @@ button { font-family: inherit; }
 /* ================ Hero ================ */
 .hero {
   position: relative; height: 78vh; min-height: 480px; max-height: 720px;
+  margin: 0 20px 24px;
+  border-radius: 20px;
   overflow: hidden;
+  /* Elevated "floating card" look instead of sitting flush against the
+     page background — the fixed navbar still overlays its top edge
+     exactly as before, only the sides/bottom get the rounded gap. */
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55);
 }
 .hero-bg, .hero-trailer { position: absolute; inset: 0; }
 .hero-bg {
@@ -1215,7 +1221,7 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   body::-webkit-scrollbar { width: 0; }
 
   /* Hero */
-  .hero { height: 68vh; min-height: 420px; }
+  .hero { height: 68vh; min-height: 420px; margin: 0 0 16px; border-radius: 0; box-shadow: none; }
   .hero-content {
     max-width: 92%; left: 4%; right: 4%; bottom: 18%;
   }
