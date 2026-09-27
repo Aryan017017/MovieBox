@@ -583,88 +583,6 @@ function friendlyErrorMessage(e) {
   return "Something went wrong loading this page.";
 }
 
-// ---------- Dominant-color extraction ----------
-const rawColorCache = new Map();
-function sampleRawColor(url) {
-  if (!url) return Promise.resolve(null);
-  if (rawColorCache.has(url)) return Promise.resolve(rawColorCache.get(url));
-  return new Promise((resolve) => {
-    // TMDB's image CDN does send Access-Control-Allow-Origin, so requesting
-    // it as crossOrigin="anonymous" both loads fine and leaves the canvas
-    // read below untainted. Without this the image still renders normally,
-    // but getImageData() throws (caught, falls back to no tint) — silently
-    // disabling every color-derived effect below.
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const W = 64, H = 64;
-        const canvas = document.createElement("canvas");
-        canvas.width = W; canvas.height = H;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, W, H);
-        const data = ctx.getImageData(0, 0, W, H).data;
-        // Quantize into 4-bit-per-channel buckets, pick the most-vibrant common bucket
-        const buckets = new Map();
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          if (a < 200) continue;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          const sat = max - min;
-          // Skip near-black, near-white, and grayscale pixels
-          if (max < 50 || min > 220 || sat < 35) continue;
-          const key = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
-          let bucket = buckets.get(key);
-          if (!bucket) { bucket = { r: 0, g: 0, b: 0, n: 0, score: 0 }; buckets.set(key, bucket); }
-          bucket.r += r; bucket.g += g; bucket.b += b; bucket.n++;
-          // Score favors saturation + count
-          bucket.score += sat;
-        }
-        if (!buckets.size) { rawColorCache.set(url, null); return resolve(null); }
-        let best = null;
-        for (const b of buckets.values()) if (!best || b.score > best.score) best = b;
-        const color = {
-          r: Math.round(best.r / best.n),
-          g: Math.round(best.g / best.n),
-          b: Math.round(best.b / best.n),
-        };
-        rawColorCache.set(url, color);
-        resolve(color);
-      } catch (e) {
-        rawColorCache.set(url, null);
-        resolve(null);
-      }
-    };
-    img.onerror = () => { rawColorCache.set(url, null); resolve(null); };
-    img.src = url;
-  });
-}
-const colorCache = new Map();
-function extractDominantColor(url) {
-  if (!url) return Promise.resolve(null);
-  if (colorCache.has(url)) return Promise.resolve(colorCache.get(url));
-  return sampleRawColor(url).then((raw) => {
-    const tweaked = raw ? clampForTint(raw) : null;
-    colorCache.set(url, tweaked);
-    return tweaked;
-  });
-}
-function clampForTint({ r, g, b }) {
-  // Darken the tint heavily so it acts as a subtle ambient hint, never dominant.
-  // 130 read as a strong, obviously-colored wash once the fade gradients (up
-  // to 0.95 opacity) were layered on top — this is meant to be barely there.
-  const max = Math.max(r, g, b);
-  const scale = max > 0 ? 55 / max : 1;
-  return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
-}
-function applyHeroTint(color) {
-  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "22, 20, 17";
-  document.documentElement.style.setProperty("--hero-tint-rgb", rgb);
-}
-function applyModalTint(color) {
-  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "30, 27, 23";
-  document.documentElement.style.setProperty("--modal-tint-rgb", rgb);
-}
 
 // ---------- Lazy image loader ----------
 const lazyImageObserver = new IntersectionObserver((entries) => {
@@ -1192,12 +1110,6 @@ async function renderHero(item) {
   const trailerEl = $("#hero-trailer");
   if (item.backdrop) preloadImage(item.backdrop);
   bg.style.backgroundImage = item.backdrop ? `url("${item.backdrop}")` : "";
-  // Reset then extract dominant color for ambient tint
-  applyHeroTint(null);
-  const heroColorSrc = item.poster || item.backdrop;
-  if (heroColorSrc) {
-    extractDominantColor(heroColorSrc).then(c => { if (heroItem === item) applyHeroTint(c); });
-  }
   trailerEl.innerHTML = "";
 
   const age = pseudoAge(item);
@@ -2945,9 +2857,6 @@ async function openModal(item, opts = {}) {
 
   const bg = item.backdrop || item.poster;
   $("#modal-bg").style.backgroundImage = bg ? `url("${bg}")` : "";
-  applyModalTint(null);
-  if (item.poster) extractDominantColor(item.poster).then(c => { if (currentItem === item) applyModalTint(c); });
-  else if (bg) extractDominantColor(bg).then(c => { if (currentItem === item) applyModalTint(c); });
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
   $(".modal-body").classList.remove("playing");
