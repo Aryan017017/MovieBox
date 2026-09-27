@@ -223,7 +223,7 @@ button { font-family: inherit; }
 /* ================ Hero ================ */
 .hero {
   position: relative; height: 74vh; min-height: 480px; max-height: 780px;
-  margin: 44px 4% 24px;
+  margin: 88px 4% 24px;
   border-radius: 20px;
   overflow: hidden;
   /* Elevated "floating card" look instead of sitting flush against the
