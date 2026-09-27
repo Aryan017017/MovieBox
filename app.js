@@ -42,6 +42,8 @@ const PLAYER_PROVIDERS = [
   { id: "vidlink", label: "Server 2 — VidLink" },
   { id: "vidsrc", label: "Server 3 — VidSrc" },
   { id: "embedsu", label: "Server 4 — Embed.su" },
+  { id: "movies111", label: "Server 5 — 111Movies" },
+  { id: "vidrock", label: "Server 6 — VidRock" },
 ];
 // =========================================================================
 
@@ -57,6 +59,8 @@ const PLAYER_BASES = {
   vidlink: "https://vidlink.pro",
   vidsrc:  "https://vidsrc.cc/v2/embed",
   embedsu: "https://embed.su/embed",
+  movies111: "https://111movies.com",
+  vidrock: "https://vidrock.net",
 };
 const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
 const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
@@ -82,7 +86,7 @@ function postYTCommand(iframe, func) {
 // iframe's already been replaced/removed by then, this is a harmless no-op.
 function revealTrailerAfterFlash(iframeEl) {
   if (!iframeEl) return;
-  setTimeout(() => iframeEl.classList.add("trailer-ready"), 1800);
+  setTimeout(() => iframeEl.classList.add("trailer-ready"), 2800);
 }
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -854,6 +858,24 @@ function makeCard(item, opts = {}) {
   card.addEventListener("mouseleave", () => {
     clearTimeout(hoverTimer);
     card.querySelector(".card-trailer")?.remove();
+    card.style.setProperty("--tilt-x", "0deg");
+    card.style.setProperty("--tilt-y", "0deg");
+  });
+  // Cursor-reactive 3D tilt (rAF-throttled: mousemove fires far more often
+  // than a frame renders, and the CSS custom properties only need to be
+  // fresh once per paint).
+  let tiltFrame = null;
+  card.addEventListener("mousemove", (e) => {
+    if (tiltFrame) return;
+    tiltFrame = requestAnimationFrame(() => {
+      tiltFrame = null;
+      const rect = card.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width;
+      const py = (e.clientY - rect.top) / rect.height;
+      const maxTilt = 10;
+      card.style.setProperty("--tilt-x", ((0.5 - py) * maxTilt * 2).toFixed(2) + "deg");
+      card.style.setProperty("--tilt-y", ((px - 0.5) * maxTilt * 2).toFixed(2) + "deg");
+    });
   });
   return card;
 }
@@ -1121,7 +1143,14 @@ function renderRow(title, items, opts = {}) {
       scroll.appendChild(card);
     }
     else if (it.type === "youtube") scroll.appendChild(makeYouTubeCard(it, opts));
-    else if (it.poster || it.backdrop) scroll.appendChild(makeCard(it, opts));
+    else if (it.poster || it.backdrop) {
+      const card = makeCard(it, opts);
+      // Staggers the row's entrance transition (see .card in CSS) so cards
+      // cascade in left-to-right as the row scrolls into view, instead of
+      // all popping in together the moment their images finish loading.
+      card.style.setProperty("--stagger-i", i);
+      scroll.appendChild(card);
+    }
   });
   wrap.appendChild(scroll);
 
@@ -3448,6 +3477,20 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null, providerOverride = 
   }
 
   if (provider === "embedsu") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "movies111") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "vidrock") {
     let path;
     if (item.type === "movie") path = `/movie/${item.id}`;
     else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;

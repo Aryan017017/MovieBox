@@ -230,7 +230,14 @@ button { font-family: inherit; }
 .hero-bg, .hero-trailer { position: absolute; inset: 0; }
 .hero-bg {
   background-size: cover; background-position: center top;
-  animation: fadeIn 0.8s var(--ease);
+  animation: fadeIn 0.8s var(--ease), kenburns 20s var(--ease-soft) infinite alternate;
+}
+@keyframes kenburns {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.08) translate(-1.2%, -1%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-bg { animation: fadeIn 0.8s var(--ease); }
 }
 .hero-trailer iframe {
   width: 100%; height: 100%; border: 0;
@@ -259,7 +266,7 @@ button { font-family: inherit; }
    adds warmth without washing out the backdrop image underneath. */
 .hero::after {
   content: ""; position: absolute; inset: 0; z-index: 1;
-  background: radial-gradient(ellipse 55% 65% at 18% 62%, rgba(var(--hero-glow-rgb),0.5), transparent 70%);
+  background: radial-gradient(ellipse 45% 55% at 18% 62%, rgba(var(--hero-glow-rgb),0.25), transparent 70%);
   mix-blend-mode: screen;
   pointer-events: none;
   transition: background 0.6s var(--ease-soft);
@@ -421,23 +428,31 @@ button { font-family: inherit; }
   background: var(--bg-2); border-radius: 10px;
   background-size: cover; background-position: center;
   cursor: pointer; position: relative;
-  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), outline-color 0.2s var(--ease), filter 0.4s var(--ease-soft);
+  /* `translate` is transitioned separately from `transform` so the row's
+     staggered entrance (translate, delayed per --stagger-i) and hover's
+     tilt/scale (transform, never delayed) can animate independently even
+     though both are live on the same element. */
+  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), outline-color 0.2s var(--ease), filter 0.4s var(--ease-soft), opacity 0.5s var(--ease-soft), translate 0.5s var(--ease-soft);
+  transition-delay: 0s, 0s, 0s, 0s, calc(min(var(--stagger-i, 0), 10) * 45ms), calc(min(var(--stagger-i, 0), 10) * 45ms);
   min-width: 180px;
   outline: 2px solid transparent;
   overflow: hidden;
   transform-origin: center;
   filter: brightness(0.85) blur(1.5px);
+  opacity: 0;
+  translate: 0 14px;
 }
-.card.img-loaded { filter: brightness(1) blur(0); }
+.card.img-loaded { filter: brightness(1) blur(0); opacity: 1; translate: 0 0; }
 .row-scroll .card:hover, .row-scroll .card:focus-visible {
   outline-color: rgba(255,255,255,0.9);
-  box-shadow: var(--shadow-lg), 0 0 36px 6px rgba(var(--glow-rgb),0.45);
-  transform: scale(1.08);
+  box-shadow: var(--shadow-lg), 0 0 20px 3px rgba(var(--glow-rgb),0.25);
+  transform: perspective(700px) scale(1.08) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
   z-index: 5;
 }
 .search-grid .card:hover, .search-grid .card:focus-visible {
   outline-color: rgba(255,255,255,0.9);
-  box-shadow: var(--shadow-md), 0 0 28px 4px rgba(var(--glow-rgb),0.4);
+  box-shadow: var(--shadow-md), 0 0 16px 2px rgba(var(--glow-rgb),0.22);
+  transform: perspective(700px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
 }
 .card:focus-visible .card-info { opacity: 1; pointer-events: auto; }
 .card:focus { outline: none; }
