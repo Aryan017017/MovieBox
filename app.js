@@ -659,28 +659,9 @@ function clampForTint({ r, g, b }) {
   const scale = max > 0 ? 130 / max : 1;
   return { r: Math.round(r * scale), g: Math.round(g * scale), b: Math.round(b * scale) };
 }
-const glowColorCache = new Map();
-// Brighter/more saturated than the background tint — meant to sit as a
-// hover box-shadow or a screen-blended spotlight, not a full-bleed wash.
-function extractGlowColor(url) {
-  if (!url) return Promise.resolve(null);
-  if (glowColorCache.has(url)) return Promise.resolve(glowColorCache.get(url));
-  return sampleRawColor(url).then((raw) => {
-    if (!raw) { glowColorCache.set(url, null); return null; }
-    const max = Math.max(raw.r, raw.g, raw.b);
-    const scale = max > 0 ? 190 / max : 1;
-    const glow = { r: Math.round(raw.r * scale), g: Math.round(raw.g * scale), b: Math.round(raw.b * scale) };
-    glowColorCache.set(url, glow);
-    return glow;
-  });
-}
 function applyHeroTint(color) {
   const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "22, 20, 17";
   document.documentElement.style.setProperty("--hero-tint-rgb", rgb);
-}
-function applyHeroGlow(color) {
-  const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "217, 164, 65";
-  document.documentElement.style.setProperty("--hero-glow-rgb", rgb);
 }
 function applyModalTint(color) {
   const rgb = color ? `${color.r}, ${color.g}, ${color.b}` : "30, 27, 23";
@@ -699,10 +680,6 @@ const lazyImageObserver = new IntersectionObserver((entries) => {
         target.classList.add("img-loaded");
       };
       img.src = url;
-      if (target.dataset.glow) {
-        extractGlowColor(url).then(c => { if (c) target.style.setProperty("--glow-rgb", `${c.r}, ${c.g}, ${c.b}`); });
-        target.removeAttribute("data-glow");
-      }
       target.removeAttribute("data-bg");
       lazyImageObserver.unobserve(target);
     }
@@ -737,7 +714,7 @@ function makeCard(item, opts = {}) {
   card.dataset.itemId = item.id;
   card.dataset.itemType = item.type;
   const bg = item.poster || item.backdropMd || item.backdrop;
-  if (bg) { card.dataset.bg = bg; card.dataset.glow = "1"; lazyImageObserver.observe(card); }
+  if (bg) { card.dataset.bg = bg; lazyImageObserver.observe(card); }
   const key = progressKey(item);
   const p = progressMap[key];
   let progressBar = "", cwMeta = "", watchedBadge = "", rewatchBadge = "";
@@ -1196,13 +1173,11 @@ async function renderHero(item) {
   const trailerEl = $("#hero-trailer");
   if (item.backdrop) preloadImage(item.backdrop);
   bg.style.backgroundImage = item.backdrop ? `url("${item.backdrop}")` : "";
-  // Reset then extract dominant color for ambient tint + glow
+  // Reset then extract dominant color for ambient tint
   applyHeroTint(null);
-  applyHeroGlow(null);
   const heroColorSrc = item.poster || item.backdrop;
   if (heroColorSrc) {
     extractDominantColor(heroColorSrc).then(c => { if (heroItem === item) applyHeroTint(c); });
-    extractGlowColor(heroColorSrc).then(c => { if (heroItem === item) applyHeroGlow(c); });
   }
   trailerEl.innerHTML = "";
 
