@@ -223,12 +223,11 @@ button { font-family: inherit; }
 /* ================ Hero ================ */
 .hero {
   position: relative; height: 78vh; min-height: 480px; max-height: 720px;
-  margin: 0 20px 24px;
+  margin: 20px 20px 24px;
   border-radius: 20px;
   overflow: hidden;
   /* Elevated "floating card" look instead of sitting flush against the
-     page background — the fixed navbar still overlays its top edge
-     exactly as before, only the sides/bottom get the rounded gap. */
+     page background/navbar on any side. */
   box-shadow: 0 24px 60px rgba(0,0,0,0.55);
 }
 .hero-bg, .hero-trailer { position: absolute; inset: 0; }
