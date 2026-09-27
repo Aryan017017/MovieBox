@@ -262,15 +262,13 @@ button { font-family: inherit; }
   z-index: 2;
   animation: slideUp 0.8s var(--ease);
 }
-/* Once the trailer's been playing a few seconds, ease the title/description
-   out of the way so the video gets the focus — Netflix does the same. */
-.hero-content .hero-title-slot,
+/* Once the trailer's been playing a few seconds, ease the badges/description
+   out of the way so the video gets more focus — the title itself stays put. */
 .hero-content .badges,
 .hero-content .hero-meta-line,
 .hero-content p {
   transition: opacity 1.5s var(--ease-soft);
 }
-.hero-content.trailer-active .hero-title-slot,
 .hero-content.trailer-active .badges,
 .hero-content.trailer-active .hero-meta-line,
 .hero-content.trailer-active p {
