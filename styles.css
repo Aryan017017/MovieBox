@@ -693,7 +693,12 @@ button { font-family: inherit; }
   font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   backdrop-filter: blur(8px);
-  transition: background 0.15s, transform 0.15s;
+  /* Hidden during playback, like every other video player's chrome —
+     only shows up while the cursor is actually over the player (or the
+     server picker has focus, so picking a server doesn't require a
+     mouse to also stay put on top of it). */
+  opacity: 0; pointer-events: none;
+  transition: background 0.15s, transform 0.15s, opacity 0.2s var(--ease);
 }
 .player-fs-btn:hover { background: rgba(40,40,40,0.95); transform: scale(1.05); }
 .player-server-select {
@@ -702,7 +707,12 @@ button { font-family: inherit; }
   background: rgba(20,20,20,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15);
   font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
   backdrop-filter: blur(8px); max-width: 44vw;
-  transition: background 0.15s;
+  opacity: 0; pointer-events: none;
+  transition: background 0.15s, opacity 0.2s var(--ease);
+}
+.player-wrap:hover .player-fs-btn, .player-wrap:focus-within .player-fs-btn,
+.player-wrap:hover .player-server-select, .player-wrap:focus-within .player-server-select {
+  opacity: 1; pointer-events: auto;
 }
 .player-server-select:hover { background: rgba(40,40,40,0.95); }
 .player-server-select:focus { outline: 1px solid var(--accent); }
@@ -2258,4 +2268,6 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .row-scroll .yt-card:hover { transform: none; box-shadow: none; }
   .row-scroll .yt-card:hover .yt-play-badge { opacity: 1; }
   .yt-channel-tile:hover { transform: none; box-shadow: none; }
+  /* No hover to reveal them on a touch device, so keep them reachable. */
+  .player-fs-btn, .player-server-select { opacity: 1; pointer-events: auto; }
 }
