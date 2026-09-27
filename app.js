@@ -561,11 +561,6 @@ function normalizeTMDB(item, forcedType) {
   };
 }
 
-function pseudoMatch(item) {
-  const r = parseFloat(item.rating || 0);
-  return Math.min(98, Math.max(60, Math.round(r * 10)));
-}
-
 function pseudoAge(item) {
   const r = parseFloat(item.rating || 0);
   if (r >= 8) return "16+";
@@ -771,7 +766,6 @@ function makeCard(item, opts = {}) {
         <button type="button" class="add-mini" aria-label="Add ${escapeHTML(item.title || "")} to My List">+</button>
       </div>
       <div class="row2">
-        <span class="match">${pseudoMatch(item)}% Match</span>
         <span class="age-mini">${pseudoAge(item)}</span>
         <span>${item.year || ""}</span>
       </div>
@@ -1206,13 +1200,11 @@ async function renderHero(item) {
   }
   trailerEl.innerHTML = "";
 
-  const match = pseudoMatch(item);
   const age = pseudoAge(item);
   $("#hero-age").textContent = age;
   $("#hero-content").innerHTML = `
     <div class="hero-title-slot"><h1>${escapeHTML(item.title)}</h1></div>
     <div class="badges">
-      <span class="match">${match}% Match</span>
       ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
       <span>${item.year || ""}</span>
     </div>
@@ -2967,7 +2959,6 @@ async function openModal(item, opts = {}) {
       $("#modal-title").style.backgroundImage = `url("${logo}")`;
     }
   });
-  $("#modal-match").textContent = `${pseudoMatch(item)}% Match`;
   $("#modal-year").textContent = item.year || "";
   $("#modal-age").textContent = pseudoAge(item);
   $("#modal-runtime").textContent = "";
@@ -3142,7 +3133,6 @@ function makeSimilarCard(item) {
     </div>
     <div class="sim-body">
       <div class="sim-meta">
-        <span class="match">${pseudoMatch(item)}% Match</span>
         ${item.rating ? `<span class="rating-star">★ ${item.rating}</span>` : ""}
         <span>${item.year || ""}</span>
         <button type="button" class="sim-add" aria-label="Add ${escapeHTML(item.title || "")} to My List">+</button>

@@ -279,7 +279,6 @@ button { font-family: inherit; }
   margin-bottom: 16px; font-size: 15px;
   text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
 }
-.hero-content .badges .match { color: var(--green); font-weight: 700; }
 .hero-meta-line {
   font-size: 14px; color: #d4d4d4; margin-bottom: 16px;
   text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
@@ -457,7 +456,6 @@ button { font-family: inherit; }
 .card-info .add-mini:hover { border-color: #fff; transform: scale(1.08); }
 .card-info .add-mini:active { transform: scale(0.94); }
 .card-info .row2 { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; }
-.card-info .match { color: var(--green); font-weight: 700; }
 .card-info .age-mini { border: 1px solid #777; padding: 0 5px; font-size: 10px; color: #e5e5e5; }
 .card-info .title {
   color: #fff; font-weight: 600; margin-top: 6px; font-size: 13px;
@@ -756,7 +754,6 @@ button { font-family: inherit; }
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
   margin-bottom: 16px; font-size: 15px; color: #ddd;
 }
-.modal-meta .match { color: var(--green); font-weight: 700; }
 .modal-meta .age-mini, .modal-meta .quality {
   border: 1px solid #555; padding: 1px 7px; font-size: 12px; color: var(--muted);
   border-radius: 2px;
@@ -838,7 +835,6 @@ button { font-family: inherit; }
 }
 .similar-card .sim-body { padding: 10px 14px 14px; }
 .similar-card .sim-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; color: #ddd; }
-.similar-card .sim-meta .match { color: var(--green); font-weight: 700; }
 .similar-card .sim-add {
   margin-left: auto; width: 26px; height: 26px; border-radius: 50%;
   background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.6);
