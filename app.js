@@ -4107,7 +4107,25 @@ fbAuth.onAuthStateChanged(user => {
   else { currentUser = null; showLoginScreen(); }
 });
 
-// PWA: register service worker (best effort) and self-update
+// PWA: register service worker (best effort) and prompt on updates.
+// This used to force `location.reload()` the moment a new SW activated —
+// fine for an occasional deploy, but during a burst of rapid pushes it
+// reloads out from under whatever the person is doing (typing, mid-video)
+// every single time, which reads as "the site keeps reloading itself"
+// rather than a normal update. Asking first fixes that.
+function showUpdateBanner() {
+  if (document.querySelector(".update-banner")) return;
+  const banner = document.createElement("div");
+  banner.className = "update-banner";
+  banner.innerHTML = `
+    <span>A new version is available.</span>
+    <button type="button" class="ub-refresh">Refresh</button>
+    <button type="button" class="ub-dismiss" aria-label="Dismiss">×</button>`;
+  document.body.appendChild(banner);
+  requestAnimationFrame(() => banner.classList.add("show"));
+  banner.querySelector(".ub-refresh").addEventListener("click", () => location.reload());
+  banner.querySelector(".ub-dismiss").addEventListener("click", () => banner.remove());
+}
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").then(reg => {
@@ -4116,7 +4134,7 @@ if ("serviceWorker" in navigator) {
         const sw = reg.installing;
         if (!sw) return;
         sw.addEventListener("statechange", () => {
-          if (sw.state === "activated") location.reload();
+          if (sw.state === "activated") showUpdateBanner();
         });
       });
     }).catch(() => {});

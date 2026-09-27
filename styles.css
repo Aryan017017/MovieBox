@@ -54,6 +54,25 @@ button { font-family: inherit; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.hidden { display: none; }
+.update-banner {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: rgba(20,20,20,0.95); backdrop-filter: blur(12px);
+  color: #fff; padding: 12px 14px 12px 20px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 14px; font-weight: 500; z-index: 200;
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+  max-width: 90vw;
+  display: flex; align-items: center; gap: 14px;
+}
+.update-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.update-banner button {
+  border: 0; border-radius: 6px; padding: 7px 14px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.update-banner .ub-refresh { background: #fff; color: #000; }
+.update-banner .ub-dismiss { background: transparent; color: var(--muted); padding: 7px 8px; }
 
 /* ================ Login Screen ================ */
 .login-screen {
