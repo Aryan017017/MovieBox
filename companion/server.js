@@ -54,10 +54,20 @@ function urlAllowed(raw) {
   return /^\/(movie|series|live)\/[^/]+\/[^/]+\/\d+\.[a-z0-9]+$/i.test(u.pathname);
 }
 
+// Built from env vars rather than a hardcoded "C:\" — Program Files can
+// live on a different drive, and %ProgramFiles(x86)% doesn't exist at all
+// on 32-bit Windows, hence the fallback to %ProgramFiles%.
+const PROGRAM_FILES = process.env["ProgramFiles"] || "C:\\Program Files";
+const PROGRAM_FILES_X86 = process.env["ProgramFiles(x86)"] || PROGRAM_FILES;
+const LOCAL_APPDATA = process.env.LOCALAPPDATA || (os.homedir() + "\\AppData\\Local");
+
 const VLC_CANDIDATES = {
   win32: [
-    "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe",
-    "C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe",
+    `${PROGRAM_FILES}\\VideoLAN\\VLC\\vlc.exe`,
+    `${PROGRAM_FILES_X86}\\VideoLAN\\VLC\\vlc.exe`,
+    // The official installer also offers a per-user install (no admin
+    // rights needed) that lands here instead of Program Files.
+    `${LOCAL_APPDATA}\\Programs\\VideoLAN\\VLC\\vlc.exe`,
   ],
   darwin: [
     "/Applications/VLC.app/Contents/MacOS/VLC",

@@ -15,12 +15,31 @@ sidesteps all of that: it's a normal local process, so it can just run
 `vlc <url>` directly, the same way opening a terminal and typing that
 command would.
 
-## Run it
+## Platform support
+
+| Platform | How "Open in VLC" works |
+|---|---|
+| Windows | This companion, running locally (`node server.js`). Auto-detects VLC in Program Files, the per-user install location, or PATH. |
+| Linux | This companion, same as Windows. Checks common package manager, snap, and flatpak install paths. |
+| macOS | This companion, same as Windows. Checks `/Applications/VLC.app`. |
+| Android | No companion possible on a phone — uses Android's `intent://` mechanism to launch VLC for Android directly, with a Play Store fallback if it's not installed. |
+| iOS | No companion possible either — VLC for iOS registers the `vlc://` URL scheme itself (`vlc://<stream-url>` is its own documented external-link format), so a plain link handles it with no extra code needed. |
+
+Desktop (Windows/Linux/macOS) without the companion running falls back to a
+plain `vlc://` link, which only works if that protocol happens to be
+registered with your OS — not guaranteed. Running the companion is what
+makes it actually automatic on desktop.
+
+## Run it (Windows, Linux, macOS)
 
 ```bash
 cd companion
 node server.js
 ```
+
+On Windows, if you don't already have Node.js, install it from
+[nodejs.org](https://nodejs.org) first, then run the same command from a
+terminal (PowerShell or Command Prompt) in the `companion` folder.
 
 Leave it running in the background while you use MovieBox. It listens on
 `http://127.0.0.1:53218` and does nothing until the website asks it to
@@ -47,6 +66,12 @@ whatever `vlc` resolves to on your `PATH`. If none of that finds it, set the
 
 ```bash
 VLC_PATH="/path/to/vlc" node server.js
+```
+
+On Windows (PowerShell):
+
+```powershell
+$env:VLC_PATH="C:\path\to\vlc.exe"; node server.js
 ```
 
 ## Run it automatically at login (optional)

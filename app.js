@@ -3221,6 +3221,12 @@ async function tryIptvNativeVideo(item, ctx, seek, token, url, ext) {
 // fall back to a plain vlc:// URI click, which is a silent no-op unless
 // that protocol happens to be registered on the OS.
 function isAndroid() { return /Android/i.test(navigator.userAgent); }
+// iPadOS 13+ reports as "Macintosh" with touch support — the only reliable
+// way to tell it apart from real macOS from the UA string alone.
+function isIOS() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
 
 const VLC_COMPANION_BASE = `http://127.0.0.1:${53218}`;
 async function tryVlcCompanion(url, title) {
@@ -3271,8 +3277,16 @@ function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
       } catch {}
       return;
     }
-    const launched = await tryVlcCompanion(directUrl, item.title);
-    if (launched) { showToast("Opening in VLC…"); return; }
+    // VLC for iOS registers the vlc:// scheme itself (vlc://<stream-url>
+    // opens straight into it — this is VLC-iOS's own documented external
+    // link format, not a guess), so the same link this branch uses as a
+    // desktop fallback already works there. The companion can't exist on a
+    // phone either way, so skip straight to it instead of burning the
+    // fetch timeout on a request nothing will ever answer.
+    if (!isIOS()) {
+      const launched = await tryVlcCompanion(directUrl, item.title);
+      if (launched) { showToast("Opening in VLC…"); return; }
+    }
     try {
       const a = document.createElement("a");
       a.href = "vlc://" + directUrl;
