@@ -132,13 +132,30 @@ const server = http.createServer((req, res) => {
         if (!vlcPath) { send(res, 500, { ok: false, error: "VLC not found. Set VLC_PATH env var to its executable." }, origin); return; }
         const args = [data.url];
         if (data.title) args.push(`--meta-title=${data.title}`);
+        let responded = false;
+        let child;
         try {
-          const child = spawn(vlcPath, args, { detached: true, stdio: "ignore" });
-          child.unref();
-          send(res, 200, { ok: true }, origin);
+          child = spawn(vlcPath, args, { detached: true, stdio: "ignore" });
         } catch (e) {
           send(res, 500, { ok: false, error: String(e && e.message || e) }, origin);
+          return;
         }
+        // spawn() doesn't throw for a bad executable path — it emits an
+        // *async* "error" event instead. Leaving that unhandled crashes the
+        // whole Node process (verified by hand: this took the companion
+        // down entirely after VLC got uninstalled mid-session), so every
+        // spawn needs a listener even though we don't use it to report back
+        // most of the time. Also clears the cached VLC path on failure, so
+        // a reinstalled/moved VLC gets re-detected on the next request
+        // instead of the companion repeating the same stale path forever.
+        child.on("error", (e) => {
+          cachedVlcPath = null;
+          if (!responded) { responded = true; send(res, 500, { ok: false, error: `Couldn't launch VLC: ${e.message}` }, origin); }
+        });
+        child.on("spawn", () => {
+          child.unref();
+          if (!responded) { responded = true; send(res, 200, { ok: true }, origin); }
+        });
       });
     });
     return;
