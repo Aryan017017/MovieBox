@@ -1,0 +1,10 @@
+{
+  "name": "moviebox-vlc-companion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny local background process that lets the MovieBox website launch your own VLC directly.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

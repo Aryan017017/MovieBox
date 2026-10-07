@@ -1,0 +1,9 @@
+name = "moviebox-iptv-proxy"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Only these provider hostnames can be reached through the proxy.
+ALLOWED_HOSTS = "line.tellyshow.cc,dns-plevo.cc"
+# Only these sites may call the proxy from a browser (localhost is always OK).
+ALLOWED_ORIGINS = "https://moviebox-peach-chi.vercel.app"

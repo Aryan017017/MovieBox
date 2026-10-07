@@ -3107,6 +3107,231 @@ function getSelectedProvider() {
   return (saved && PLAYER_BASES[saved]) ? saved : PLAYER_PROVIDER;
 }
 
+// =========================================================================
+// IPTV playback for movies/shows — tried before every iframe provider below.
+// Matches the TMDB title against the user's own Xtream catalog (same login
+// as the Live TV page, see live.js) via /api/iptv/match, which does the
+// actual catalog search server-side since the catalog itself can be tens of
+// thousands of entries. A match hands off to the user's own VLC (see
+// renderVlcHandoff) rather than trying Chrome's <video> automatically —
+// Chrome only decodes H.264/AAC and plenty of real titles from this
+// provider fail there outright. No match (or no IPTV account connected)
+// falls back to the usual iframe providers (buildPlayerURL/launchPlayerAttempt).
+// =========================================================================
+const IPTV_CFG_KEY = "moviebox_live_cfg_v1"; // shared with live.js
+const IPTV_HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
+const IPTV_START_TIMEOUT_MS = 12000; // cap on the matched stream actually starting to play, in the opt-in "try in browser" path
+let iptvPlayerInst = null;
+let currentIptvStreamURL = null; // for the "copy link for VLC" button, set whenever a match is found
+
+function loadIptvCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem(IPTV_CFG_KEY) || "null");
+    return c && c.server && c.username && c.password ? c : null;
+  } catch { return null; }
+}
+function iptvProxyBase(cfg) {
+  return cfg.proxy ? cfg.proxy.replace(/\/+$/, "") : location.origin + "/api/iptv";
+}
+const _iptvScriptCache = {};
+function loadIptvScript(src) {
+  if (_iptvScriptCache[src]) return _iptvScriptCache[src];
+  _iptvScriptCache[src] = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => { delete _iptvScriptCache[src]; reject(new Error("Couldn't load " + src)); };
+    document.head.appendChild(s);
+  });
+  return _iptvScriptCache[src];
+}
+
+async function iptvMatch(cfg, item, ctx) {
+  const p = new URLSearchParams({
+    server: cfg.server, username: cfg.username, password: cfg.password,
+    kind: item.type === "tv" ? "tv" : "movie",
+    title: item.title || "", year: item.year || "", poster: item.poster || "",
+  });
+  if (item.type === "tv") {
+    p.set("season", String(ctx.season || 1));
+    p.set("episode", String(ctx.episode || 1));
+  }
+  try {
+    const res = await fetch(`${iptvProxyBase(cfg)}/match?${p}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j && j.found ? j : null;
+  } catch { return null; }
+}
+
+function iptvStreamURL(cfg, item, streamId, ext) {
+  const p = new URLSearchParams({
+    server: cfg.server, username: cfg.username, password: cfg.password,
+    kind: item.type === "tv" ? "series" : "movie",
+    stream_id: String(streamId), ext,
+  });
+  return `${iptvProxyBase(cfg)}/vod?${p}`;
+}
+
+function teardownIptvPlayer() {
+  // currentIptvStreamURL deliberately survives teardown — a matched stream
+  // whose native playback failed (e.g. a codec Chrome can't decode) still
+  // falls back to an iframe below, but the VLC link for that same match
+  // stays offered there too, since VLC has none of Chrome's codec limits.
+  const p = iptvPlayerInst;
+  iptvPlayerInst = null;
+  try { if (p && p.type === "hls") p.inst.destroy(); } catch {}
+  const v = document.getElementById("iptv-video");
+  if (v) { try { v.pause(); v.removeAttribute("src"); v.load(); } catch {} }
+}
+
+function waitForIptvPlaying(video, ms) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; clearTimeout(timer); video.removeEventListener("playing", onPlaying); resolve(ok); };
+    const onPlaying = () => finish(true);
+    const timer = setTimeout(() => finish(false), ms);
+    video.addEventListener("playing", onPlaying);
+  });
+}
+
+// Renders its own <video> (with the same fullscreen/server-switch chrome as
+// the iframe players) and resolves true once playback has actually started.
+// Resolves false — after tearing itself back down — if the stream doesn't
+// start within IPTV_START_TIMEOUT_MS (commonly a codec Chrome can't decode;
+// VLC has no such limits, which is why it's offered as the default instead).
+async function tryIptvNativeVideo(item, ctx, seek, token, url, ext) {
+  teardownIptvPlayer();
+  activePlayerOrigin = "iptv:" + Math.random(); // never matches a real postMessage origin
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `<video id="iptv-video" controls playsinline autoplay></video>
+    <button class="player-vlc-btn" id="player-vlc-btn" title="Copy stream link for VLC" aria-label="Copy stream link for VLC">⧉ VLC</button>
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+    <select class="player-server-select" id="player-server-select" title="Choose server" aria-label="Choose server">
+      <option value="iptv" selected>Your IPTV</option>
+      ${PLAYER_PROVIDERS.map(p => `<option value="${p.id}">${p.label}</option>`).join("")}
+    </select>`;
+  const video = $("#iptv-video");
+  if (seek) video.addEventListener("loadedmetadata", () => { try { video.currentTime = seek; } catch {} }, { once: true });
+
+  let started = false;
+  try {
+    if (ext === "m3u8") {
+      await loadIptvScript(IPTV_HLS_SRC);
+      if (!window.Hls || !window.Hls.isSupported()) { teardownIptvPlayer(); return false; }
+      const hls = new window.Hls({ lowLatencyMode: false, maxBufferLength: 30 });
+      iptvPlayerInst = { type: "hls", inst: hls };
+      const playing = waitForIptvPlaying(video, IPTV_START_TIMEOUT_MS);
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      video.play().catch(() => {});
+      started = await playing;
+    } else {
+      iptvPlayerInst = { type: "native" };
+      const playing = waitForIptvPlaying(video, IPTV_START_TIMEOUT_MS);
+      video.src = url;
+      video.play().catch(() => {});
+      started = await playing;
+    }
+  } catch { started = false; }
+
+  if (token !== playerAttemptToken) { teardownIptvPlayer(); return false; }
+  if (!started) { teardownIptvPlayer(); return false; }
+
+  video.addEventListener("timeupdate", () => {
+    if (token !== playerAttemptToken || privacy.pauseProgress) return;
+    if (!currentItem || String(item.id) !== String(currentItem.id) || item.type !== currentItem.type) return;
+    clearTimeout(playerWatchdogTimer);
+    applyProgressUpdate(video.currentTime || 0, video.duration || 0, ctx.season, ctx.episode);
+  });
+  video.addEventListener("ended", () => {
+    if (token !== playerAttemptToken) return;
+    applyProgressUpdate(video.duration || 0, video.duration || 0, ctx.season, ctx.episode);
+  });
+  return true;
+}
+
+// Hitting Play on a matched title offers a hand-off to the user's own VLC
+// instead of trying Chrome's <video> first — VLC decodes everything this
+// provider serves; Chrome only decodes H.264/AAC and silently fails on
+// plenty of real titles (verified by hand). "Open in VLC" tries the local
+// companion app first (see companion/) — a tiny background process that
+// launches VLC directly via child_process.spawn, no browser sandbox in the
+// way, no download, nothing to register. Only if that's not running does it
+// fall back to a plain vlc:// URI click, which is a silent no-op unless
+// that protocol happens to be registered on the OS.
+const VLC_COMPANION_BASE = `http://127.0.0.1:${53218}`;
+async function tryVlcCompanion(url, title) {
+  try {
+    const res = await fetch(`${VLC_COMPANION_BASE}/play`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, title }),
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) return false;
+    const j = await res.json().catch(() => null);
+    return !!(j && j.ok);
+  } catch { return false; }
+}
+
+function renderVlcHandoff(item, ctx, seek, token, url, ext) {
+  teardownIptvPlayer();
+  activePlayerItem = item; activePlayerCtx = ctx; activePlayerSeek = seek;
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `
+    <div class="player-loading vlc-handoff">
+      <div class="vlc-handoff-icon">▶</div>
+      <div class="vlc-handoff-title">Found on your IPTV</div>
+      <div class="live-sub">VLC plays every format this provider serves — Chrome's built-in player can't decode some of them.</div>
+      <div class="vlc-handoff-actions">
+        <button class="btn" id="vlc-open-btn" type="button">Open in VLC</button>
+        <button class="btn-secondary" id="vlc-try-browser-btn" type="button">Try playing in browser instead</button>
+      </div>
+    </div>`;
+
+  $("#vlc-open-btn")?.addEventListener("click", async () => {
+    const launched = await tryVlcCompanion(url, item.title);
+    if (launched) { showToast("Opening in VLC…"); return; }
+    try {
+      const a = document.createElement("a");
+      a.href = "vlc://" + url;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {}
+  });
+  $("#vlc-try-browser-btn")?.addEventListener("click", async () => {
+    const ok = await tryIptvNativeVideo(item, ctx, seek, token, url, ext);
+    if (!ok && token === playerAttemptToken) {
+      launchPlayerAttempt(item, ctx, seek, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), token, true);
+    }
+  });
+}
+
+// Looks up this title on the user's own IPTV (same login as Live TV) and
+// hands off to VLC when found; falls back to the usual iframe provider
+// chain when there's no IPTV match at all, or no IPTV account connected.
+async function attemptPlayback(item, ctx, seek, token) {
+  currentIptvStreamURL = null;
+  if (item.type === "movie" || item.type === "tv") {
+    const cfg = loadIptvCfg();
+    if (cfg) {
+      $("#player-wrap").classList.add("active");
+      $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Looking for this on your IPTV…</div>`;
+      const match = await iptvMatch(cfg, item, ctx);
+      if (token !== playerAttemptToken) return; // superseded — user closed or replayed
+      if (match) {
+        const url = iptvStreamURL(cfg, item, match.streamId, match.ext);
+        currentIptvStreamURL = url;
+        renderVlcHandoff(item, ctx, seek, token, url, match.ext);
+        return;
+      }
+    }
+  }
+  launchPlayerAttempt(item, ctx, seek, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), token, true);
+}
+
 let playerAttemptToken = 0;
 let playerWatchdogTimer = null;
 // The postMessage listener below only trusts messages from whichever origin
@@ -3115,6 +3340,7 @@ let playerWatchdogTimer = null;
 let activePlayerOrigin = PLAYER_ORIGIN;
 let activePlayerItem = null, activePlayerCtx = null, activePlayerSeek = null;
 function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
+  teardownIptvPlayer();
   const url = buildPlayerURL(item, ctx, seek, provider);
   activePlayerOrigin = new URL(PLAYER_BASES[provider] || PLAYER_BASE).origin;
   activePlayerItem = item; activePlayerCtx = ctx; activePlayerSeek = seek;
@@ -3122,6 +3348,7 @@ function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
   $("#player-wrap").innerHTML = `<iframe src="${url}"
     allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
     allowfullscreen referrerpolicy="origin"></iframe>
+    ${currentIptvStreamURL ? `<button class="player-vlc-btn" id="player-vlc-btn" title="Copy stream link for VLC" aria-label="Copy stream link for VLC">⧉ VLC</button>` : ""}
     <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
     <select class="player-server-select" id="player-server-select" title="Choose server" aria-label="Choose server">
       ${PLAYER_PROVIDERS.map(p => `<option value="${p.id}"${p.id === provider ? " selected" : ""}>${p.label}</option>`).join("")}
@@ -3178,7 +3405,7 @@ function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   $("#modal-trailer").innerHTML = "";
   $(".modal-body").classList.add("playing");
   playerAttemptToken++;
-  launchPlayerAttempt(item, ctx, seekOffsetSec, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), playerAttemptToken, true);
+  attemptPlayback(item, ctx, seekOffsetSec, playerAttemptToken);
   $("#modal").scrollTop = 0;
 
   playingItem = item;
@@ -3449,25 +3676,12 @@ function updateListButton() {
 $("#add-list").addEventListener("click", (e) => { if (currentItem) { toggleList(currentItem); sparkleAt(e.currentTarget); } });
 
 // ---------- Watch Progress ----------
-window.addEventListener("message", (event) => {
-  if (event.origin !== activePlayerOrigin) return;  // only trust the currently active player iframe
-  let data = event.data;
-  if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
-  // The player wraps every event as {type:"PLAYER_EVENT", data:{event:"timeupdate", currentTime, duration, id, mediaType, season, episode}}
-  // — it does NOT send a pre-computed percentage or flat top-level fields.
-  if (!data || typeof data !== "object" || data.type !== "PLAYER_EVENT") return;
-  const d = data.data;
-  if (!d || d.event !== "timeupdate" || d.id == null) return;
+// Shared by the iframe providers' postMessage events and the native IPTV
+// <video>'s own timeupdate/ended events below — same progressMap, same
+// skip-intro/up-next overlays, regardless of which player produced it.
+function applyProgressUpdate(timestamp, duration, season, episode) {
   if (!currentItem) return;
-  if (String(d.id) !== String(currentItem.id) || d.mediaType !== currentItem.type) return; // stale event from a previous title
-  clearTimeout(playerWatchdogTimer); // the player is alive — no need for the fallback watchdog
-  if (privacy.pauseProgress) return;  // privacy: skip progress saves
-
-  const timestamp = d.currentTime || 0;
-  const duration = d.duration || 0;
   const progress = duration > 0 ? Math.min(100, (timestamp / duration) * 100) : 0;
-  const season = Number.isFinite(d.season) ? d.season : undefined;
-  const episode = Number.isFinite(d.episode) ? d.episode : undefined;
 
   progressMap[progressKey(currentItem)] = {
     progress, timestamp, duration,
@@ -3507,6 +3721,25 @@ window.addEventListener("message", (event) => {
     const remaining = duration - timestamp;
     if (remaining > 0 && remaining <= 25 && !upNextShown) showUpNext();
   }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== activePlayerOrigin) return;  // only trust the currently active player iframe
+  let data = event.data;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
+  // The player wraps every event as {type:"PLAYER_EVENT", data:{event:"timeupdate", currentTime, duration, id, mediaType, season, episode}}
+  // — it does NOT send a pre-computed percentage or flat top-level fields.
+  if (!data || typeof data !== "object" || data.type !== "PLAYER_EVENT") return;
+  const d = data.data;
+  if (!d || d.event !== "timeupdate" || d.id == null) return;
+  if (!currentItem) return;
+  if (String(d.id) !== String(currentItem.id) || d.mediaType !== currentItem.type) return; // stale event from a previous title
+  clearTimeout(playerWatchdogTimer); // the player is alive — no need for the fallback watchdog
+  if (privacy.pauseProgress) return;  // privacy: skip progress saves
+
+  const season = Number.isFinite(d.season) ? d.season : undefined;
+  const episode = Number.isFinite(d.episode) ? d.episode : undefined;
+  applyProgressUpdate(d.currentTime || 0, d.duration || 0, season, episode);
 });
 
 // Our own fullscreen control for the player: third-party embeds (videasy in
@@ -3520,6 +3753,16 @@ document.addEventListener("click", (e) => {
   const wrap = $("#player-wrap");
   if (document.fullscreenElement === wrap) document.exitFullscreen();
   else wrap.requestFullscreen?.().catch(() => {});
+});
+// Chrome's <video> only decodes H.264/AAC — plenty of IPTV encodes (HEVC,
+// AC3 audio, etc.) fail there with no fallback possible in-browser. VLC has
+// no such limits, so handing off the raw stream link is the actual fix.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#player-vlc-btn")) return;
+  if (!currentIptvStreamURL) return;
+  navigator.clipboard?.writeText(currentIptvStreamURL)
+    .then(() => showToast("Stream link copied — open VLC, then Media ▸ Open Network Stream and paste it"))
+    .catch(() => showToast("Couldn't copy — right-click the VLC button isn't available, sorry"));
 });
 document.addEventListener("fullscreenchange", () => {
   const btn = document.getElementById("player-fs-btn");
@@ -3653,6 +3896,7 @@ async function route() {
   else if (parts[0] === "person" && parts[1]) p = showPerson(parts[1]);
   else if (parts[0] === "youtube" && parts[1]) p = showYouTubeChannelPage(parts[1]);
   else if (parts[0] === "channels") p = showChannelsPage();
+  else if (parts[0] === "live") p = window.showLivePage ? window.showLivePage() : showHome();
   else if (parts[0] === "search") {
     const q = params.get("q") || "";
     $("#search").value = q;
@@ -3736,6 +3980,7 @@ $$("#navbar [data-nav]").forEach(a => {
     else if (nav === "tv") navTo("#/tv");
     else if (nav === "new") navTo("#/new");
     else if (nav === "channels") navTo("#/channels");
+    else if (nav === "live") navTo("#/live");
     else if (nav === "mylist") navTo("#/list");
     else if (nav === "history") { setProfileMenuOpen(false); navTo("#/history"); }
   });

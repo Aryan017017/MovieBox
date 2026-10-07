@@ -1,4 +1,6 @@
 .claude/
 *.docx
 worker/.wrangler/
+worker-iptv/.wrangler/
 .vercel
+.env*
