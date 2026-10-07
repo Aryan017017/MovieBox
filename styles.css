@@ -2115,9 +2115,9 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
 
 /* ================ YouTube channel rows ================ */
 .yt-card {
-  flex: 0 0 320px; aspect-ratio: 16/9;
+  flex: 0 0 12%; aspect-ratio: 16/9;
   background: var(--bg-2); border-radius: 12px; overflow: hidden;
-  cursor: pointer; position: relative; min-width: 260px;
+  cursor: pointer; position: relative; min-width: 180px;
   background-size: cover; background-position: center;
   transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), filter 0.4s var(--ease-soft);
   filter: brightness(0.85) blur(1.5px);
