@@ -3220,6 +3220,8 @@ async function tryIptvNativeVideo(item, ctx, seek, token, url, ext) {
 // way, no download, nothing to register. Only if that's not running does it
 // fall back to a plain vlc:// URI click, which is a silent no-op unless
 // that protocol happens to be registered on the OS.
+function isAndroid() { return /Android/i.test(navigator.userAgent); }
+
 const VLC_COMPANION_BASE = `http://127.0.0.1:${53218}`;
 async function tryVlcCompanion(url, title) {
   try {
@@ -3250,6 +3252,25 @@ function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
     </div>`;
 
   $("#vlc-open-btn")?.addEventListener("click", async () => {
+    // The companion is a desktop-only local process — on a phone/tablet
+    // there's nothing at 127.0.0.1 to answer it, and desktop VLC's vlc://
+    // scheme isn't what VLC for Android registers either. Android's
+    // intent:// mechanism is the standard way a mobile page deep-links a
+    // specific installed app, and VLC for Android does handle it.
+    if (isAndroid()) {
+      try {
+        const scheme = directUrl.startsWith("https:") ? "https" : "http";
+        const stripped = directUrl.replace(/^https?:\/\//, "");
+        const fallback = encodeURIComponent("https://play.google.com/store/apps/details?id=org.videolan.vlc");
+        // launchFlags=0x10000000 is FLAG_ACTIVITY_NEW_TASK — without it some
+        // browsers start VLC's activity without bringing it to the
+        // foreground (it opens "behind" the browser instead of switching
+        // to it). category=BROWSABLE is required for Chrome to resolve an
+        // intent: URI into an explicit-package launch at all.
+        location.href = `intent://${stripped}#Intent;scheme=${scheme};package=org.videolan.vlc;type=video/*;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;launchFlags=0x10000000;S.browser_fallback_url=${fallback};end`;
+      } catch {}
+      return;
+    }
     const launched = await tryVlcCompanion(directUrl, item.title);
     if (launched) { showToast("Opening in VLC…"); return; }
     try {
