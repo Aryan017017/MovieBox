@@ -3124,6 +3124,22 @@ function iptvStreamURL(cfg, item, streamId, ext) {
   return `${iptvProxyBase(cfg)}/vod?${p}`;
 }
 
+// The DIRECT upstream URL (no Vercel proxy involved at all), used for VLC
+// hand-off specifically. Two real problems this sidesteps that don't apply
+// to the proxied URL above: (1) this provider's CDN edges inconsistently
+// block Vercel's IP ranges per-title (verified by hand — some streams work
+// through the proxy, others don't, varying by which edge they route
+// through) while a residential IP like the user's own isn't blocked; and
+// (2) Vercel functions hard-cap execution at 60s, which a 90+ minute movie
+// streamed live through one function invocation would hit regardless.
+// Chrome can't use this directly (mixed content: https page, http stream;
+// also no reason to hand raw provider credentials to the browser), so
+// "try in browser" still goes through the proxied URL.
+function iptvDirectURL(cfg, item, streamId, ext) {
+  const kind = item.type === "tv" ? "series" : "movie";
+  return `${cfg.server}/${kind}/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${streamId}.${ext}`;
+}
+
 function teardownIptvPlayer() {
   // currentIptvStreamURL deliberately survives teardown — a matched stream
   // whose native playback failed (e.g. a codec Chrome can't decode) still
@@ -3219,7 +3235,7 @@ async function tryVlcCompanion(url, title) {
   } catch { return false; }
 }
 
-function renderVlcHandoff(item, ctx, seek, token, url, ext) {
+function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
   teardownIptvPlayer();
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `
@@ -3234,18 +3250,18 @@ function renderVlcHandoff(item, ctx, seek, token, url, ext) {
     </div>`;
 
   $("#vlc-open-btn")?.addEventListener("click", async () => {
-    const launched = await tryVlcCompanion(url, item.title);
+    const launched = await tryVlcCompanion(directUrl, item.title);
     if (launched) { showToast("Opening in VLC…"); return; }
     try {
       const a = document.createElement("a");
-      a.href = "vlc://" + url;
+      a.href = "vlc://" + directUrl;
       document.body.appendChild(a);
       a.click();
       a.remove();
     } catch {}
   });
   $("#vlc-try-browser-btn")?.addEventListener("click", async () => {
-    const ok = await tryIptvNativeVideo(item, ctx, seek, token, url, ext);
+    const ok = await tryIptvNativeVideo(item, ctx, seek, token, proxiedUrl, ext);
     if (!ok && token === playerAttemptToken) renderNotAvailable(item, "Couldn't play this in the browser either.");
   });
 }
@@ -3280,9 +3296,10 @@ async function attemptPlayback(item, ctx, seek, token) {
   const match = await iptvMatch(cfg, item, ctx);
   if (token !== playerAttemptToken) return; // superseded — user closed or replayed
   if (!match) { renderNotAvailable(item); return; }
-  const url = iptvStreamURL(cfg, item, match.streamId, match.ext);
-  currentIptvStreamURL = url;
-  renderVlcHandoff(item, ctx, seek, token, url, match.ext);
+  const directUrl = iptvDirectURL(cfg, item, match.streamId, match.ext);
+  const proxiedUrl = iptvStreamURL(cfg, item, match.streamId, match.ext);
+  currentIptvStreamURL = directUrl;
+  renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, match.ext);
 }
 
 let playerAttemptToken = 0;
