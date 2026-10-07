@@ -13,6 +13,18 @@
   // separately hosted proxy (e.g. the Cloudflare Worker in worker-iptv/,
   // for a provider that blocks Vercel's IPs instead of Cloudflare's).
 
+  // Baked in on purpose (owner's explicit call) so the site works for any
+  // visitor with zero setup, not just the owner. This IS public: it ships
+  // in plain client-side JS to anyone who loads the site or reads the repo.
+  // Someone else using this connects to the same account (1 connection on
+  // the current plan), so expect contention if that matters to you later.
+  const DEFAULT_CFG = {
+    server: "http://dns-plevo.cc",
+    username: "Htb64825",
+    password: "Zsa54782",
+    proxy: "",
+  };
+
   const CFG_KEY = "moviebox_live_cfg_v1";
   const HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
   const MPEGTS_SRC = "https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js";
@@ -40,11 +52,21 @@
   function loadCfg() {
     try {
       const c = JSON.parse(localStorage.getItem(CFG_KEY) || "null");
-      return c && c.server && c.username && c.password ? c : null;
-    } catch { return null; }
+      if (c && c.server && c.username && c.password) return c;
+    } catch {}
+    // Nothing saved yet in this browser — seed it with the default so the
+    // site works immediately; a user can still override it via "Change
+    // login" on the Live TV page, which persists as usual after that.
+    saveCfg(DEFAULT_CFG);
+    return DEFAULT_CFG;
   }
   function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch {} }
   function clearCfg() { try { localStorage.removeItem(CFG_KEY); } catch {} }
+  // Seed the default immediately on script load (this file runs on every
+  // page, not just #/live) so app.js's own movie/show IPTV lookup — which
+  // reads localStorage directly rather than going through this module —
+  // already finds a config even if the user never visits the Live TV page.
+  loadCfg();
 
   // ---------- helpers ----------
   const scriptCache = {};
