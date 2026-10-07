@@ -5,6 +5,16 @@
   background: #000; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-md);
 }
 .live-player video { width: 100%; height: 100%; display: block; background: #000; }
+/* .player-vlc-btn (styles.css) is hover-revealed and bottom-anchored by
+   default, matching the movie/show player's auto-hiding chrome that sits
+   above the native <video controls> bar. The live player's native controls
+   are always visible at the bottom here, so move it to a top corner
+   instead of overlapping them, and keep it always on rather than needing a
+   hover to discover it exists at all. */
+.live-player .player-vlc-btn {
+  top: 14px; right: 14px; bottom: auto;
+  opacity: 1; pointer-events: auto;
+}
 .live-overlay {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   text-align: center; padding: 24px; background: rgba(0,0,0,0.55); pointer-events: none;

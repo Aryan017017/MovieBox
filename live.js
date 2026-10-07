@@ -129,6 +129,54 @@
     else alert(msg);
   }
 
+  // ---------- VLC hand-off ----------
+  // Same reasoning as the movie/show player (app.js): direct-to-provider
+  // rather than through our own proxy, since this provider's CDN edges
+  // inconsistently block Vercel's IPs per-stream and Vercel functions
+  // hard-cap execution at 60s — fine for an on-demand movie clip, not for
+  // a live channel meant to keep playing indefinitely.
+  function liveDirectURL(cfg, id, ext) {
+    return `${cfg.server}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${id}.${ext}`;
+  }
+  function isAndroid() { return /Android/i.test(navigator.userAgent); }
+  function isIOS() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  async function tryVlcCompanion(url, title) {
+    try {
+      const res = await fetch("http://127.0.0.1:53218/play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, title }),
+        signal: AbortSignal.timeout(1500),
+      });
+      if (!res.ok) return false;
+      const j = await res.json().catch(() => null);
+      return !!(j && j.ok);
+    } catch { return false; }
+  }
+  async function openInVlc(url, title) {
+    if (isAndroid()) {
+      const scheme = url.startsWith("https:") ? "https" : "http";
+      const stripped = url.replace(/^https?:\/\//, "");
+      const fallback = encodeURIComponent("https://play.google.com/store/apps/details?id=org.videolan.vlc");
+      location.href = `intent://${stripped}#Intent;scheme=${scheme};package=org.videolan.vlc;type=video/*;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;launchFlags=0x10000000;S.browser_fallback_url=${fallback};end`;
+      return;
+    }
+    if (!isIOS()) {
+      const launched = await tryVlcCompanion(url, title);
+      if (launched) { toast("Opening in VLC…"); return; }
+    }
+    try {
+      const a = document.createElement("a");
+      a.href = "vlc://" + url;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {}
+  }
+
   // ---------- player ----------
   function teardownPlayer() {
     const p = state.player;
@@ -383,6 +431,7 @@
         <div class="live-player">
           <video id="live-video" controls playsinline autoplay></video>
           <div class="live-overlay" id="live-overlay"><div class="live-msg">Pick a channel to start watching</div></div>
+          <button type="button" class="player-vlc-btn" id="live-vlc-btn" title="Open in VLC" aria-label="Open in VLC">⧉ VLC</button>
         </div>
         <div class="live-now" id="live-now"></div>
         <div class="live-controls">
@@ -435,6 +484,10 @@
           ? new Date(Number(ui.exp_date) * 1000).toLocaleString() : "no expiry listed";
         toast(`Account ${ui.status || "?"} · expires ${exp} · connections ${ui.active_cons || 0}/${ui.max_connections || "?"}`);
       } catch (e) { toast(e.message || "Couldn't read account info."); }
+    });
+    q("#live-vlc-btn").addEventListener("click", () => {
+      if (!state.current) { toast("Pick a channel first."); return; }
+      openInVlc(liveDirectURL(cfg, state.current.stream_id, "m3u8"), state.current.name || "Live TV");
     });
 
     loadChannels(cfg);
