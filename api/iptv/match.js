@@ -12,21 +12,20 @@ const { posterFile, findMatch } = require("./_match");
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const cache = new Map(); // `${base}|${kind}` -> { at, items }
 
-// A plain <video> element plays these reliably; mkv/avi/etc. are excluded
-// even though the provider serves them — Chrome's native mkv support is
-// unreliable enough in practice that it's not worth the 12s failed attempt
-// (verified by hand: an .mkv match never started playback before falling
-// back to an iframe provider anyway).
-const SAFE_EXTS = new Set(["mp4", "m4v", "mov", "webm", "m3u8"]);
-
+// Every container the provider serves is a valid match — VLC (the primary
+// playback path, see app.js renderVlcHandoff) doesn't care about container
+// format at all. An earlier version of this file rejected mkv/etc. here on
+// the assumption Chrome's <video> was the primary player; that filter
+// silently turned real catalog hits (e.g. a title whose only episode is
+// .mkv) into false "not available" results — verified by hand. The opt-in
+// "try in browser" button already fails gracefully on its own if the
+// browser truly can't decode what's returned.
 function stripMovie(x) {
-  const ext = (x.container_extension || "mp4").toLowerCase();
-  if (!SAFE_EXTS.has(ext)) return null;
-  return { id: x.stream_id, title: x.title || x.name, year: x.year, poster: posterFile(x.stream_icon), ext };
+  return { id: x.stream_id, title: x.title || x.name, year: x.year, poster: posterFile(x.stream_icon), ext: (x.container_extension || "mp4").toLowerCase() };
 }
 function stripSeries(x) {
-  // Series ext isn't known until the per-episode get_series_info lookup —
-  // filtered there instead (see the handler below).
+  // Series ext isn't known until the per-episode get_series_info lookup
+  // (see the handler below).
   return { id: x.series_id, title: x.title || x.name, year: x.year, poster: posterFile(x.cover) };
 }
 
@@ -93,10 +92,9 @@ module.exports = async (req, res) => {
   try { info = await infoRes.json(); } catch { res.status(200).json({ found: false }); return; }
   const allEpisodes = Object.values(info?.episodes || {}).flat();
   const ep = allEpisodes.find((e) => Number(e.season) === season && Number(e.episode_num) === episode);
-  const ext = (ep?.container_extension || "mp4").toLowerCase();
-  if (!ep || !SAFE_EXTS.has(ext)) { res.status(200).json({ found: false }); return; }
+  if (!ep) { res.status(200).json({ found: false }); return; }
 
-  res.status(200).json({ found: true, streamId: Number(ep.id), ext });
+  res.status(200).json({ found: true, streamId: Number(ep.id), ext: (ep.container_extension || "mp4").toLowerCase() });
 };
 
 module.exports.config = { maxDuration: 60 };
