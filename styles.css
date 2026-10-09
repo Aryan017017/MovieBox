@@ -2134,14 +2134,14 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), filter 0.4s var(--ease-soft);
   filter: brightness(0.85) blur(1.5px);
   outline: 2px solid transparent;
-  /* Rows can mix yt-cards with taller poster .card siblings (e.g. Continue
-     Watching) — flex's default cross-axis stretch would otherwise pull this
-     to the poster's height, distorting the 16:9 thumbnail (cover-cropped
-     into a near-square). Opt out so it keeps its own proportions, and align
-     to the bottom (not the top) so it shares a baseline with the posters
-     instead of floating above a gap. */
-  align-self: flex-end;
 }
+/* Home page rows only: match the poster card's full portrait size instead
+   of the natural 16:9 thumbnail shape, so these rows line up evenly with
+   the movie/show rows around them. The video thumbnail just gets
+   cover-cropped into that taller frame. The dedicated channel-browsing
+   grid (.yt-grid) keeps the natural 16:9 shape — it never sits next to
+   poster cards, so there's nothing to line up with there. */
+.row-scroll .yt-card { aspect-ratio: 2/3; }
 .yt-card.img-loaded { filter: brightness(1) blur(0); }
 .row-scroll .yt-card:hover, .row-scroll .yt-card:focus-visible {
   transform: scale(1.06); box-shadow: var(--shadow-lg); z-index: 5;
