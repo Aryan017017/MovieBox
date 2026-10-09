@@ -700,8 +700,17 @@ button { font-family: inherit; }
   transition: background 0.15s, transform 0.15s, opacity 0.2s var(--ease);
 }
 .player-fs-btn:hover { background: rgba(40,40,40,0.95); transform: scale(1.05); }
-.player-vlc-btn {
+.player-server-select {
   position: absolute; bottom: 14px; right: 58px; z-index: 6;
+  height: 36px; padding: 0 10px; border-radius: 18px;
+  background: rgba(20,20,20,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+  font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+  backdrop-filter: blur(8px); max-width: 44vw;
+  opacity: 0; pointer-events: none;
+  transition: background 0.15s, opacity 0.2s var(--ease);
+}
+.player-vlc-btn {
+  position: absolute; bottom: 14px; right: 100px; z-index: 6;
   height: 36px; padding: 0 14px; border-radius: 18px;
   background: rgba(20,20,20,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15);
   font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
@@ -711,9 +720,12 @@ button { font-family: inherit; }
 }
 .player-vlc-btn:hover { background: rgba(40,40,40,0.95); }
 .player-wrap:hover .player-fs-btn, .player-wrap:focus-within .player-fs-btn,
-.player-wrap:hover .player-vlc-btn, .player-wrap:focus-within .player-vlc-btn {
+.player-wrap:hover .player-vlc-btn, .player-wrap:focus-within .player-vlc-btn,
+.player-wrap:hover .player-server-select, .player-wrap:focus-within .player-server-select {
   opacity: 1; pointer-events: auto;
 }
+.player-server-select:hover { background: rgba(40,40,40,0.95); }
+.player-server-select:focus { outline: 1px solid var(--accent); }
 .player-overlay-skip {
   position: absolute; bottom: 14%; right: 24px; z-index: 6;
   background: rgba(0,0,0,0.8); color: #fff;
@@ -770,7 +782,7 @@ button { font-family: inherit; }
 .player-overlay-upnext .upnext-cancel { background: rgba(109,109,110,0.55); color: #fff; }
 .player-overlay-upnext .upnext-cancel:hover { background: rgba(109,109,110,0.4); }
 .modal-body.playing .modal-hero { display: none; }
-.player-wrap video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.player-wrap iframe, .player-wrap video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; background: #000; }
 .player-loading {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 12px; color: #fff; font-size: 15px; background: #000;
@@ -2262,5 +2274,5 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .row-scroll .yt-card:hover .yt-play-badge { opacity: 1; }
   .yt-channel-tile:hover { transform: none; box-shadow: none; }
   /* No hover to reveal them on a touch device, so keep them reachable. */
-  .player-fs-btn, .player-vlc-btn { opacity: 1; pointer-events: auto; }
+  .player-fs-btn, .player-vlc-btn, .player-server-select { opacity: 1; pointer-events: auto; }
 }

@@ -15,10 +15,56 @@ const YOUTUBE_CHANNELS = [
   { key: "mssp", label: "MSSP", handle: "MSsecretpod" },
   { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "PLa0gskjtcZLw" }, // "The Palki Sharma Show"
 ];
+const PLAYER_COLOR = "D9A441";
+// Optional: deploy the Cloudflare Worker in /worker and put its URL here to
+// route the player through a popup-shielding proxy. Leave "" to disable.
+const PROXY_PLAYER_BASE = "";
+
+// ---- Player provider (fallback when IPTV has no match — see IPTV
+// playback section below, which is tried first) ----
+// All free embed providers monetize via popup ads. Try a few and pick the
+// least aggressive at the moment. Swap this single value.
+//   "videasy"  – default, supports postMessage progress + many params
+//   "vidlink"  – often cleaner; supports postMessage progress
+//   "vidsrc"   – different URL scheme, fewer params
+//   "embedsu"  – minimal, bare embed
+const PLAYER_PROVIDER = "videasy";
+// If the default provider never signals a single timeupdate within this
+// long (some devices/networks get stuck on the provider's own loading
+// screen — e.g. a caption fetch that silently hangs), automatically swap
+// to this fallback provider once and retry, rather than leaving the user
+// stuck on an infinite spinner.
+const PLAYER_FALLBACK_PROVIDER = "vidlink";
+const PLAYER_WATCHDOG_MS = 14000;
+// Shown in the player's server-picker dropdown, in this order. `id` must
+// match a key in PLAYER_BASES / a branch in buildPlayerURL.
+const PLAYER_PROVIDERS = [
+  { id: "videasy", label: "Server 1 — Videasy" },
+  { id: "vidlink", label: "Server 2 — VidLink" },
+  { id: "vidsrc", label: "Server 3 — VidSrc" },
+  { id: "embedsu", label: "Server 4 — Embed.su" },
+  { id: "movies111", label: "Server 5 — 111Movies" },
+  { id: "vidrock", label: "Server 6 — VidRock" },
+];
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
+const PLAYER_BASES = {
+  // .net 301-redirects to .to — pointing here directly avoids the extra hop,
+  // and matters more than that: postMessage's event.origin reflects the
+  // final redirected document (.to), so PLAYER_ORIGIN (derived from this
+  // constant) must match .to or the progress-tracking listener silently
+  // rejects every message from the real player.
+  videasy: "https://player.videasy.to",
+  vidlink: "https://vidlink.pro",
+  vidsrc:  "https://vidsrc.cc/v2/embed",
+  embedsu: "https://embed.su/embed",
+  movies111: "https://111movies.com",
+  vidrock: "https://vidrock.net",
+};
+const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
+const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
 // Named YT_EMBED (not YT) because the real YouTube IFrame Player API script
 // declares a global `YT` object — a `const YT` here would collide with it
 // and throw "Identifier 'YT' has already been declared".
@@ -95,6 +141,7 @@ const STORAGE = {
   affinityActors: "moviebox:actors", // { actorId: { name, count, profile_path, lastSeen } }
   affinityDirectors: "moviebox:directors",
   status: "moviebox:status",         // explicit status overrides { itemKey: "dropped" | "plan" }
+  playerProvider: "moviebox:playerProvider", // user's chosen fallback server, overrides PLAYER_PROVIDER
 };
 const loadJSON = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch { return f; } };
 const saveJSON = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); scheduleCloudSync(); };
@@ -3057,18 +3104,23 @@ function computeNextEpisode(item, ctx) {
 }
 
 // =========================================================================
-// IPTV playback for movies/shows — the only playback path (videasy/vidlink/
-// etc. embeds have been removed entirely). Matches the TMDB title against
-// the user's own Xtream catalog (same login as the Live TV page, see
-// live.js) via /api/iptv/match, which does the actual catalog search
-// server-side since the catalog itself can be tens of
+// IPTV playback for movies/shows — tried before the iframe providers below.
+// Matches the TMDB title against the user's own Xtream catalog (same login
+// as the Live TV page, see live.js) via /api/iptv/match, which does the
+// actual catalog search server-side since the catalog itself can be tens of
 // thousands of entries. A match hands off to the user's own VLC (see
 // renderVlcHandoff) rather than trying Chrome's <video> automatically —
 // Chrome only decodes H.264/AAC and plenty of real titles from this
-// provider fail there outright. No match (or no IPTV account connected)
-// shows a plain "not available" message — there's no other player left to
-// fall back to.
+// provider fail there outright. No match (or no IPTV account connected, or
+// the opt-in "try in browser" button also failing) falls back to the usual
+// iframe providers (buildPlayerURL/launchPlayerAttempt) — not every title
+// is on this IPTV provider, so that fallback stays as the safety net.
 // =========================================================================
+function getSelectedProvider() {
+  const saved = localStorage.getItem(STORAGE.playerProvider);
+  return (saved && PLAYER_BASES[saved]) ? saved : PLAYER_PROVIDER;
+}
+
 const IPTV_CFG_KEY = "moviebox_live_cfg_v1"; // shared with live.js
 const IPTV_HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
 const IPTV_START_TIMEOUT_MS = 12000; // cap on the matched stream actually starting to play, in the opt-in "try in browser" path
@@ -3145,6 +3197,7 @@ function teardownIptvPlayer() {
   // whose native playback failed (e.g. a codec Chrome can't decode) still
   // falls back to an iframe below, but the VLC link for that same match
   // stays offered there too, since VLC has none of Chrome's codec limits.
+  stopVlcProgressPolling();
   const p = iptvPlayerInst;
   iptvPlayerInst = null;
   try { if (p && p.type === "hls") p.inst.destroy(); } catch {}
@@ -3229,18 +3282,46 @@ function isIOS() {
 }
 
 const VLC_COMPANION_BASE = `http://127.0.0.1:${53218}`;
-async function tryVlcCompanion(url, title) {
+async function tryVlcCompanion(url, title, startTime) {
   try {
     const res = await fetch(`${VLC_COMPANION_BASE}/play`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, title }),
+      body: JSON.stringify({ url, title, startTime: startTime || undefined }),
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return false;
     const j = await res.json().catch(() => null);
     return !!(j && j.ok);
   } catch { return false; }
+}
+
+let vlcPollTimer = null;
+function stopVlcProgressPolling() { clearInterval(vlcPollTimer); vlcPollTimer = null; }
+// Once VLC has launched, the companion's own /status (polling VLC's
+// built-in HTTP status interface — see companion/server.js) is the only
+// way to know playback position, since VLC is a separate app that
+// otherwise reports nothing back to the page. Doesn't touch playback
+// itself at all, purely observes it.
+function startVlcProgressPolling(item, ctx, token) {
+  stopVlcProgressPolling();
+  let misses = 0;
+  vlcPollTimer = setInterval(async () => {
+    if (token !== playerAttemptToken || privacy.pauseProgress) { stopVlcProgressPolling(); return; }
+    try {
+      const res = await fetch(`${VLC_COMPANION_BASE}/status`, { signal: AbortSignal.timeout(2000) });
+      const j = await res.json().catch(() => null);
+      if (!j || !j.ok || !(j.length > 0)) {
+        // VLC closed, or its status interface isn't up yet (brief startup
+        // window) — a few misses in a row means it's actually gone.
+        if (++misses >= 4) stopVlcProgressPolling();
+        return;
+      }
+      misses = 0;
+      if (!currentItem || String(item.id) !== String(currentItem.id) || item.type !== currentItem.type) return;
+      applyProgressUpdate(j.time, j.length, ctx.season, ctx.episode);
+    } catch { if (++misses >= 4) stopVlcProgressPolling(); }
+  }, 5000);
 }
 
 function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
@@ -3284,8 +3365,12 @@ function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
     // phone either way, so skip straight to it instead of burning the
     // fetch timeout on a request nothing will ever answer.
     if (!isIOS()) {
-      const launched = await tryVlcCompanion(directUrl, item.title);
-      if (launched) { showToast("Opening in VLC…"); return; }
+      const launched = await tryVlcCompanion(directUrl, item.title, seek);
+      if (launched) {
+        showToast("Opening in VLC…");
+        startVlcProgressPolling(item, ctx, token);
+        return;
+      }
     }
     try {
       const a = document.createElement("a");
@@ -3297,47 +3382,84 @@ function renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, ext) {
   });
   $("#vlc-try-browser-btn")?.addEventListener("click", async () => {
     const ok = await tryIptvNativeVideo(item, ctx, seek, token, proxiedUrl, ext);
-    if (!ok && token === playerAttemptToken) renderNotAvailable(item, "Couldn't play this in the browser either.");
+    if (!ok && token === playerAttemptToken) {
+      launchPlayerAttempt(item, ctx, seek, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), token, true);
+    }
   });
 }
 
-// Shown when there's simply nothing left to try — no other player to fall
-// back to now that the iframe providers are gone.
-function renderNotAvailable(item, reason) {
-  teardownIptvPlayer();
-  $("#player-wrap").classList.add("active");
-  $("#player-wrap").innerHTML = `
-    <div class="player-loading vlc-handoff">
-      <div class="vlc-handoff-icon">⚠</div>
-      <div class="vlc-handoff-title">Not available on your IPTV</div>
-      <div class="live-sub">${escapeHTML(reason || `"${item.title || "This title"}" isn't in your provider's catalog right now.`)}</div>
-    </div>`;
-}
-
 // Looks up this title on the user's own IPTV (same login as Live TV) and
-// hands off to VLC when found. There's no other player left to fall back
-// to now that videasy/vidlink/etc. have been removed — no match (or no
-// IPTV account connected) just says so.
+// hands off to VLC when found. No match (or no IPTV account connected)
+// falls back to the usual iframe providers — not every title is on this
+// IPTV provider, so that fallback is the safety net, same as it always was.
 async function attemptPlayback(item, ctx, seek, token) {
   currentIptvStreamURL = null;
-  if (item.type !== "movie" && item.type !== "tv") return;
-  const cfg = loadIptvCfg();
-  if (!cfg) {
-    renderNotAvailable(item, "Connect your IPTV on the Live TV page first.");
-    return;
+  stopVlcProgressPolling();
+  if (item.type === "movie" || item.type === "tv") {
+    const cfg = loadIptvCfg();
+    if (cfg) {
+      $("#player-wrap").classList.add("active");
+      $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Looking for this on your IPTV…</div>`;
+      const match = await iptvMatch(cfg, item, ctx);
+      if (token !== playerAttemptToken) return; // superseded — user closed or replayed
+      if (match) {
+        const directUrl = iptvDirectURL(cfg, item, match.streamId, match.ext);
+        const proxiedUrl = iptvStreamURL(cfg, item, match.streamId, match.ext);
+        currentIptvStreamURL = directUrl;
+        renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, match.ext);
+        return;
+      }
+    }
   }
-  $("#player-wrap").classList.add("active");
-  $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Looking for this on your IPTV…</div>`;
-  const match = await iptvMatch(cfg, item, ctx);
-  if (token !== playerAttemptToken) return; // superseded — user closed or replayed
-  if (!match) { renderNotAvailable(item); return; }
-  const directUrl = iptvDirectURL(cfg, item, match.streamId, match.ext);
-  const proxiedUrl = iptvStreamURL(cfg, item, match.streamId, match.ext);
-  currentIptvStreamURL = directUrl;
-  renderVlcHandoff(item, ctx, seek, token, directUrl, proxiedUrl, match.ext);
+  launchPlayerAttempt(item, ctx, seek, PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider(), token, true);
 }
 
 let playerAttemptToken = 0;
+let playerWatchdogTimer = null;
+// The postMessage listener below only trusts messages from whichever origin
+// is actually loaded right now — updated on every launch since the user can
+// switch servers (each on its own domain) via the in-player dropdown.
+let activePlayerOrigin = PLAYER_ORIGIN;
+let activePlayerItem = null, activePlayerCtx = null, activePlayerSeek = null;
+function launchPlayerAttempt(item, ctx, seek, provider, token, armWatchdog) {
+  teardownIptvPlayer();
+  const url = buildPlayerURL(item, ctx, seek, provider);
+  activePlayerOrigin = new URL(PLAYER_BASES[provider] || PLAYER_BASE).origin;
+  activePlayerItem = item; activePlayerCtx = ctx; activePlayerSeek = seek;
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `<iframe src="${url}"
+    allow="encrypted-media; autoplay; fullscreen; picture-in-picture"
+    allowfullscreen referrerpolicy="origin"></iframe>
+    ${currentIptvStreamURL ? `<button class="player-vlc-btn" id="player-vlc-btn" title="Copy stream link for VLC" aria-label="Copy stream link for VLC">⧉ VLC</button>` : ""}
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+    <select class="player-server-select" id="player-server-select" title="Choose server" aria-label="Choose server">
+      ${PLAYER_PROVIDERS.map(p => `<option value="${p.id}"${p.id === provider ? " selected" : ""}>${p.label}</option>`).join("")}
+    </select>`;
+  clearTimeout(playerWatchdogTimer);
+  // Only videasy gets watchdogged — the postMessage listener only
+  // understands videasy's message shape (PLAYER_EVENT/timeupdate), so it's
+  // the only provider whose liveness we can actually verify. Arming this
+  // for any other provider (including a manually-picked one) meant the
+  // timer could never be cleared and would always force-swap to vidlink
+  // after PLAYER_WATCHDOG_MS, even when that provider was playing fine.
+  if (armWatchdog && provider === "videasy") {
+    playerWatchdogTimer = setTimeout(() => {
+      if (token !== playerAttemptToken) return; // superseded — user closed or replayed
+      showToast("Having trouble loading — trying another server…");
+      launchPlayerAttempt(item, ctx, seek, PLAYER_FALLBACK_PROVIDER, token, false);
+    }, PLAYER_WATCHDOG_MS);
+  }
+}
+// Delegated (the select is recreated on every launch): switching servers
+// remembers the choice and relaunches from roughly the same timestamp.
+document.addEventListener("change", (e) => {
+  if (!e.target.closest("#player-server-select")) return;
+  const provider = e.target.value;
+  localStorage.setItem(STORAGE.playerProvider, provider);
+  if (!activePlayerItem) return;
+  playerAttemptToken++;
+  launchPlayerAttempt(activePlayerItem, activePlayerCtx || {}, lastTimestamp || activePlayerSeek, provider, playerAttemptToken, true);
+});
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   // Smart resume: if user pressed main Play (no ctx) on TV and last episode was finished, jump to next
   const last = progressMap[progressKey(item)];
@@ -3465,7 +3587,80 @@ function showUpNext() {
 
 let lastTimestamp = 0;
 
+function buildPlayerURL(item, ctx = {}, overrideSeek = null, providerOverride = null) {
+  // Per-episode seek if applicable, else show-level
+  let last;
+  if (item.type === "tv" && ctx.episode) {
+    last = progressMap[episodeProgressKey(item, ctx.season || 1, ctx.episode)] || progressMap[progressKey(item)];
+  } else {
+    last = progressMap[progressKey(item)];
+  }
+  let seek = overrideSeek != null ? Math.floor(overrideSeek) : (last?.timestamp ? Math.floor(last.timestamp) : null);
+  // Don't seek if at the very end (would cause auto-finish loop)
+  if (seek != null && last?.duration && seek > last.duration - 30) seek = null;
+
+  // Provider-specific URL builders
+  const provider = providerOverride || (PROXY_PLAYER_BASE ? "videasy" : getSelectedProvider());
+  const base = providerOverride ? PLAYER_BASES[providerOverride] : PLAYER_BASE;
+
+  if (provider === "vidlink") {
+    // vidlink.pro - same path scheme as videasy
+    const params = new URLSearchParams();
+    params.set("primaryColor", PLAYER_COLOR);
+    params.set("autoplay", "true");
+    params.set("nextbutton", "true");
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}?${params.toString()}`;
+  }
+
+  if (provider === "vidsrc") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "embedsu") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "movies111") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "vidrock") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  // Default: videasy
+  const params = new URLSearchParams();
+  params.set("color", PLAYER_COLOR);
+  params.set("nextEpisode", "true");
+  params.set("episodeSelector", "true");
+  params.set("autoplayNextEpisode", "true");
+  params.set("overlay", "true");
+  if (seek != null) params.set("progress", seek);
+
+  let path;
+  if (item.type === "movie") path = `/movie/${item.id}`;
+  else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+  return `${base}${path}?${params.toString()}`;
+}
+
 function closeModal() {
+  stopVlcProgressPolling();
+  clearTimeout(playerWatchdogTimer);
   $("#modal").classList.add("hidden");
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
@@ -3611,6 +3806,25 @@ function applyProgressUpdate(timestamp, duration, season, episode) {
     if (remaining > 0 && remaining <= 25 && !upNextShown) showUpNext();
   }
 }
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== activePlayerOrigin) return;  // only trust the currently active player iframe
+  let data = event.data;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
+  // The player wraps every event as {type:"PLAYER_EVENT", data:{event:"timeupdate", currentTime, duration, id, mediaType, season, episode}}
+  // — it does NOT send a pre-computed percentage or flat top-level fields.
+  if (!data || typeof data !== "object" || data.type !== "PLAYER_EVENT") return;
+  const d = data.data;
+  if (!d || d.event !== "timeupdate" || d.id == null) return;
+  if (!currentItem) return;
+  if (String(d.id) !== String(currentItem.id) || d.mediaType !== currentItem.type) return; // stale event from a previous title
+  clearTimeout(playerWatchdogTimer); // the player is alive — no need for the fallback watchdog
+  if (privacy.pauseProgress) return;  // privacy: skip progress saves
+
+  const season = Number.isFinite(d.season) ? d.season : undefined;
+  const episode = Number.isFinite(d.episode) ? d.episode : undefined;
+  applyProgressUpdate(d.currentTime || 0, d.duration || 0, season, episode);
+});
 
 // Our own fullscreen control for the player — fullscreening the wrapper div
 // ourselves (rather than relying on the native <video> controls) keeps the
@@ -3794,6 +4008,8 @@ function openTitle(item) {
 }
 
 function closeModalSilent() {
+  stopVlcProgressPolling();
+  clearTimeout(playerWatchdogTimer);
   $("#modal").classList.add("hidden");
   $("#modal-trailer").innerHTML = "";
   $("#player-wrap").innerHTML = ""; $("#player-wrap").classList.remove("active");
