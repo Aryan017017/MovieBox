@@ -14,8 +14,19 @@ const http = require("http");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const os = require("os");
+const crypto = require("crypto");
 
 const PORT = Number(process.env.MOVIEBOX_COMPANION_PORT) || 53218;
+
+// VLC's own built-in HTTP status interface (ships with every install, not
+// something we're adding to VLC) — turned on via extra launch flags below
+// purely so this companion can poll it for playback position, completely
+// separate from the `vlc <url>` launch itself. One fixed port/password for
+// this companion's lifetime: fine since the IPTV account this is used with
+// only allows one connection at a time anyway, so there's only ever one
+// VLC instance playing MovieBox content to monitor.
+const VLC_HTTP_PORT = Number(process.env.MOVIEBOX_VLC_HTTP_PORT) || 53219;
+const VLC_HTTP_PASSWORD = crypto.randomBytes(16).toString("hex");
 
 // Only these sites may ask this companion to launch anything — otherwise
 // any random webpage you happen to visit could probe localhost and trigger
@@ -140,8 +151,22 @@ const server = http.createServer((req, res) => {
 
       findVlc((vlcPath) => {
         if (!vlcPath) { send(res, 500, { ok: false, error: "VLC not found. Set VLC_PATH env var to its executable." }, origin); return; }
+        // Base launch is exactly what it always was: `vlc <url>` (+ title).
+        // Everything below is purely additive — turns on VLC's own built-in
+        // status interface so /status (below) can poll it for position, and
+        // optionally resumes at a saved position. Neither changes what gets
+        // played or how; if either flag were somehow unsupported, VLC would
+        // just ignore it and play the URL normally regardless.
         const args = [data.url];
         if (data.title) args.push(`--meta-title=${data.title}`);
+        args.push(
+          "--extraintf", "http",
+          "--http-host", "127.0.0.1",
+          "--http-port", String(VLC_HTTP_PORT),
+          "--http-password", VLC_HTTP_PASSWORD,
+        );
+        const startTime = Number(data.startTime);
+        if (Number.isFinite(startTime) && startTime > 0) args.push(`--start-time=${Math.floor(startTime)}`);
         let responded = false;
         let child;
         try {
@@ -168,6 +193,32 @@ const server = http.createServer((req, res) => {
         });
       });
     });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/status") {
+    if (!allowed) { send(res, 403, { ok: false, error: "Origin not allowed" }, null); return; }
+    const auth = "Basic " + Buffer.from(`:${VLC_HTTP_PASSWORD}`).toString("base64");
+    const upstream = http.request(
+      { host: "127.0.0.1", port: VLC_HTTP_PORT, path: "/requests/status.xml", headers: { Authorization: auth }, timeout: 2000 },
+      (up) => {
+        let body = "";
+        up.on("data", (c) => { body += c; });
+        up.on("end", () => {
+          // VLC's status interface is plain XML — a tiny regex pull beats
+          // pulling in an XML parser dependency for three fields.
+          const field = (tag) => { const m = new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(body); return m ? m[1] : null; };
+          const time = Number(field("time"));
+          const length = Number(field("length"));
+          const state = field("state");
+          if (!state || !Number.isFinite(time) || !Number.isFinite(length)) { send(res, 200, { ok: false }, origin); return; }
+          send(res, 200, { ok: true, time, length, state }, origin);
+        });
+      },
+    );
+    upstream.on("error", () => send(res, 200, { ok: false }, origin)); // VLC not open / interface not up yet — not an error, just nothing to report
+    upstream.on("timeout", () => { upstream.destroy(); send(res, 200, { ok: false }, origin); });
+    upstream.end();
     return;
   }
 
