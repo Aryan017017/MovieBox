@@ -1298,7 +1298,10 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
      .hero-content's text stack once the hero got shorter here — anchoring
      to the top instead keeps it clear regardless of how tall that stack
      gets (title + badges + meta + description can vary a lot by title). */
-  .hero-controls { top: 64px; bottom: auto; right: 4%; }
+  /* was a flat 64px, tuned against the tablet navbar's height — but phones
+     use the shorter --navbar-h (52px + notch inset, set above), so this
+     sat only ~12px under the nav and looked cramped/cut-off against it. */
+  .hero-controls { top: calc(var(--navbar-h, 52px) + 14px); bottom: auto; right: 4%; }
   .mute-btn { width: 36px; height: 36px; font-size: 14px; }
   .age-badge { padding: 4px 12px 4px 10px; font-size: 13px; margin-left: 10px; }
   .hero-fade { background: linear-gradient(180deg, rgba(var(--hero-tint-rgb),0.4), rgba(var(--hero-tint-rgb),0.95) 90%); }
@@ -2275,4 +2278,16 @@ body.no-hero #rows { margin-top: 88px; padding-top: 28px; }
   .yt-channel-tile:hover { transform: none; box-shadow: none; }
   /* No hover to reveal them on a touch device, so keep them reachable. */
   .player-fs-btn, .player-vlc-btn, .player-server-select { opacity: 1; pointer-events: auto; }
+  /* iOS/Android require a second tap on anything whose :hover state would
+     otherwise change its appearance — the first tap just "arrives at"
+     hover, same as a mouse would. The resets above already cover most of
+     it, but outline-color and these two badges' opacity were still a real
+     (if subtle) hover-only change, which was enough on its own to keep a
+     poster needing two taps to open. Pin them to their resting values so
+     :hover is a complete no-op here and a single tap goes straight through
+     to the click handler. */
+  .row-scroll .card:hover, .search-grid .card:hover,
+  .row-scroll .yt-card:hover, .yt-grid .yt-card:hover { outline-color: transparent; }
+  .card:hover .cw-dismiss, .yt-card:hover .cw-dismiss { opacity: 0; }
+  .card:hover .progress-ring { opacity: 0; }
 }

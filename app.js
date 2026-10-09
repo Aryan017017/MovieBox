@@ -69,6 +69,13 @@ const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
 // declares a global `YT` object — a `const YT` here would collide with it
 // and throw "Identifier 'YT' has already been declared".
 const YT_EMBED = "https://www.youtube.com/embed/";
+// Touch devices simulate mouseenter/mouseover on the first tap to let
+// hover-only sites work at all — which means a card with a real
+// mouseenter listener (the trailer preview below) eats that first tap as
+// "hover" and only fires the actual click on a second tap. Desktop-only
+// hover affordances (trailer preview, cursor tilt) are gated behind this so
+// touch devices get a plain, single-tap click straight to openModal.
+const SUPPORTS_HOVER = !!(window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches);
 // Toggling mute by tearing down and recreating the iframe re-triggers the
 // browser's autoplay-with-sound gate — mobile Safari/Chrome only allow that
 // on a synchronous tap, and rebuilding involves an async trailer-key fetch,
@@ -719,57 +726,59 @@ function makeCard(item, opts = {}) {
   card.querySelector(".play-mini")?.addEventListener("click", (e) => { e.stopPropagation(); openTitle(item); });
   card.querySelector(".add-mini")?.addEventListener("click", (e) => { e.stopPropagation(); toggleList(item); });
 
-  let hoverTimer;
-  card.addEventListener("mouseenter", () => {
-    hoverTimer = setTimeout(async () => {
-      try {
-        const key = await fetchTrailerKey(item);
-        if (!key || !card.matches(":hover")) return;
-        if (card.querySelector(".card-trailer")) return;
-        const wrap = document.createElement("div");
-        wrap.className = "card-trailer";
-        const renderTrailer = () => {
-          wrap.innerHTML = `
-            <iframe src="${YT_EMBED}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
-            <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${volumeIconSVG(cardMuted)}</button>`;
-          const muteBtn = wrap.querySelector(".card-mute");
-          muteBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            cardMuted = !cardMuted;
-            postYTCommand(wrap.querySelector("iframe"), cardMuted ? "mute" : "unMute");
-            muteBtn.innerHTML = volumeIconSVG(cardMuted);
-            muteBtn.title = cardMuted ? "Unmute" : "Mute";
-            muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
-          });
-          revealTrailerAfterFlash(wrap.querySelector("iframe"));
-        };
-        renderTrailer();
-        card.appendChild(wrap);
-      } catch {}
-    }, 600);
-  });
-  card.addEventListener("mouseleave", () => {
-    clearTimeout(hoverTimer);
-    card.querySelector(".card-trailer")?.remove();
-    card.style.setProperty("--tilt-x", "0deg");
-    card.style.setProperty("--tilt-y", "0deg");
-  });
-  // Cursor-reactive 3D tilt (rAF-throttled: mousemove fires far more often
-  // than a frame renders, and the CSS custom properties only need to be
-  // fresh once per paint).
-  let tiltFrame = null;
-  card.addEventListener("mousemove", (e) => {
-    if (tiltFrame) return;
-    tiltFrame = requestAnimationFrame(() => {
-      tiltFrame = null;
-      const rect = card.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width;
-      const py = (e.clientY - rect.top) / rect.height;
-      const maxTilt = 10;
-      card.style.setProperty("--tilt-x", ((0.5 - py) * maxTilt * 2).toFixed(2) + "deg");
-      card.style.setProperty("--tilt-y", ((px - 0.5) * maxTilt * 2).toFixed(2) + "deg");
+  if (SUPPORTS_HOVER) {
+    let hoverTimer;
+    card.addEventListener("mouseenter", () => {
+      hoverTimer = setTimeout(async () => {
+        try {
+          const key = await fetchTrailerKey(item);
+          if (!key || !card.matches(":hover")) return;
+          if (card.querySelector(".card-trailer")) return;
+          const wrap = document.createElement("div");
+          wrap.className = "card-trailer";
+          const renderTrailer = () => {
+            wrap.innerHTML = `
+              <iframe src="${YT_EMBED}${key}?autoplay=1&mute=${cardMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${key}&disablekb=1&vq=hd1080&hd=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+              <button type="button" class="card-mute" title="${cardMuted ? "Unmute" : "Mute"}" aria-label="${cardMuted ? "Unmute" : "Mute"}">${volumeIconSVG(cardMuted)}</button>`;
+            const muteBtn = wrap.querySelector(".card-mute");
+            muteBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              cardMuted = !cardMuted;
+              postYTCommand(wrap.querySelector("iframe"), cardMuted ? "mute" : "unMute");
+              muteBtn.innerHTML = volumeIconSVG(cardMuted);
+              muteBtn.title = cardMuted ? "Unmute" : "Mute";
+              muteBtn.setAttribute("aria-label", cardMuted ? "Unmute" : "Mute");
+            });
+            revealTrailerAfterFlash(wrap.querySelector("iframe"));
+          };
+          renderTrailer();
+          card.appendChild(wrap);
+        } catch {}
+      }, 600);
     });
-  });
+    card.addEventListener("mouseleave", () => {
+      clearTimeout(hoverTimer);
+      card.querySelector(".card-trailer")?.remove();
+      card.style.setProperty("--tilt-x", "0deg");
+      card.style.setProperty("--tilt-y", "0deg");
+    });
+    // Cursor-reactive 3D tilt (rAF-throttled: mousemove fires far more often
+    // than a frame renders, and the CSS custom properties only need to be
+    // fresh once per paint).
+    let tiltFrame = null;
+    card.addEventListener("mousemove", (e) => {
+      if (tiltFrame) return;
+      tiltFrame = requestAnimationFrame(() => {
+        tiltFrame = null;
+        const rect = card.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width;
+        const py = (e.clientY - rect.top) / rect.height;
+        const maxTilt = 10;
+        card.style.setProperty("--tilt-x", ((0.5 - py) * maxTilt * 2).toFixed(2) + "deg");
+        card.style.setProperty("--tilt-y", ((px - 0.5) * maxTilt * 2).toFixed(2) + "deg");
+      });
+    });
+  }
   return card;
 }
 
