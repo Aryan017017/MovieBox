@@ -45,6 +45,8 @@ const PLAYER_PROVIDERS = [
   { id: "embedsu", label: "Server 4 — Embed.su" },
   { id: "movies111", label: "Server 5 — 111Movies" },
   { id: "vidrock", label: "Server 6 — VidRock" },
+  { id: "vaplayer", label: "Server 7 — VAPlayer" },
+  { id: "vidstuck", label: "Server 8 — Vidstuck" },
 ];
 // =========================================================================
 
@@ -62,6 +64,8 @@ const PLAYER_BASES = {
   embedsu: "https://embed.su/embed",
   movies111: "https://111movies.com",
   vidrock: "https://vidrock.net",
+  vaplayer: "https://vaplayer.ru/embed",
+  vidstuck: "https://vidstuck.cc/embed",
 };
 const PLAYER_BASE = PROXY_PLAYER_BASE || PLAYER_BASES[PLAYER_PROVIDER] || PLAYER_BASES.videasy;
 const PLAYER_ORIGIN = new URL(PLAYER_BASE).origin;
@@ -3650,6 +3654,25 @@ function buildPlayerURL(item, ctx = {}, overrideSeek = null, providerOverride = 
     if (item.type === "movie") path = `/movie/${item.id}`;
     else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
     return `${base}${path}`;
+  }
+
+  if (provider === "vaplayer") {
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}`;
+  }
+
+  if (provider === "vidstuck") {
+    const params = new URLSearchParams();
+    params.set("color", PLAYER_COLOR);
+    params.set("autoplay", "true");
+    params.set("back", "false");
+    if (seek != null) params.set("progress", seek);
+    let path;
+    if (item.type === "movie") path = `/movie/${item.id}`;
+    else path = `/tv/${item.id}/${ctx.season || 1}/${ctx.episode || 1}`;
+    return `${base}${path}?${params.toString()}`;
   }
 
   // Default: videasy
