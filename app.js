@@ -3196,16 +3196,6 @@ async function penguMatch(item, ctx) {
   } catch { return null; }
 }
 
-// Default stream: 1080p from the "2Peckle" source if PenguPlay listed one
-// for this title, else whatever it listed first.
-function pickPenguStream(streams) {
-  const is2Peckle1080p = (s) => {
-    const text = `${s.name || ""} ${s.title || ""}`.toLowerCase();
-    return text.includes("2peckle") && text.includes("1080");
-  };
-  return streams.find(is2Peckle1080p) || streams[0];
-}
-
 let playerAttemptToken = 0;
 
 async function attemptPlayback(item, ctx, seek, token) {
@@ -3220,14 +3210,38 @@ async function attemptPlayback(item, ctx, seek, token) {
     $("#player-wrap").innerHTML = `<div class="player-loading">Couldn't find a PenguPlay stream for this title.</div>`;
     return;
   }
-  const stream = pickPenguStream(streams);
-  currentStreamURL = stream.url;
-  const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, extFromStreamUrl(stream.url));
-  if (token !== playerAttemptToken) return; // superseded — user closed or replayed
-  if (!ok) {
-    currentStreamURL = null;
-    $("#player-wrap").innerHTML = `<div class="player-loading">That PenguPlay stream wouldn't play — try again in a bit.</div>`;
-  }
+  renderPenguPicker(item, ctx, seek, token, streams);
+}
+
+// Lets the user pick which PenguPlay stream to play, rather than guessing
+// one automatically — PenguPlay often lists several sources/qualities for
+// the same title and there's no reliable way to know upfront which one
+// will actually play.
+function renderPenguPicker(item, ctx, seek, token, streams) {
+  teardownNativePlayer();
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `
+    <div class="player-loading pengu-picker">
+      <div class="pengu-picker-title">Choose a stream</div>
+      <div class="pengu-stream-list">
+        ${streams.map((s, i) => `<button class="btn-secondary pengu-stream-btn" type="button" data-idx="${i}">${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
+      </div>
+    </div>`;
+  $$(".pengu-stream-btn", $("#player-wrap")).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (token !== playerAttemptToken) return;
+      const stream = streams[+btn.dataset.idx];
+      currentStreamURL = stream.url;
+      $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Loading…</div>`;
+      const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, extFromStreamUrl(stream.url));
+      if (token !== playerAttemptToken) return; // superseded — user closed or replayed
+      if (!ok) {
+        currentStreamURL = null;
+        showToast("That stream wouldn't play — pick another.");
+        renderPenguPicker(item, ctx, seek, token, streams);
+      }
+    });
+  });
 }
 function startPlayer(item, ctx = {}, seekOffsetSec = null) {
   // Smart resume: if user pressed main Play (no ctx) on TV and last episode was finished, jump to next
