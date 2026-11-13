@@ -3209,7 +3209,16 @@ async function fetchAllStreams(item, ctx) {
       return Array.isArray(j.streams) ? j.streams : [];
     }));
 
-    return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    const streams = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    // Chrome's <video> can't decode most .mkv/.avi/.ts containers regardless
+    // of the codec inside — a real recurring complaint, since PenguPlay in
+    // particular lists its highest-quality options (4K/1080p) as .mkv first.
+    // Nothing is dropped (still available via "Open in VLC", which has none
+    // of Chrome's container limits) — just sorted so the options actually
+    // likely to play natively come first in the picker.
+    const riskyContainer = (s) => ["mkv", "avi", "ts"].includes(extFromStreamUrl(s.url));
+    streams.sort((a, b) => Number(riskyContainer(a)) - Number(riskyContainer(b)));
+    return streams;
   } catch { return []; }
 }
 
@@ -3250,11 +3259,18 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       const stream = streams[+btn.dataset.idx];
       currentStreamURL = stream.url;
       $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Loading…</div>`;
-      const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, extFromStreamUrl(stream.url));
+      const ext = extFromStreamUrl(stream.url);
+      const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, ext);
       if (token !== playerAttemptToken) return; // superseded — user closed or replayed
       if (!ok) {
         currentStreamURL = null;
-        showToast("That stream wouldn't play — pick another.");
+        // .mkv/.avi/.ts containers routinely fail here even though the
+        // stream itself is fine — Chrome's <video> just can't decode most
+        // of them. VLC has no such limit, hence the pointer instead of a
+        // generic "try another" for exactly those extensions.
+        showToast(["mkv", "avi", "ts"].includes(ext)
+          ? `This browser can't play .${ext} — click it again and hit "Open in VLC" instead, or pick another stream.`
+          : "That stream wouldn't play — pick another.");
         renderStreamPicker(item, ctx, seek, token, streams);
       }
     });
