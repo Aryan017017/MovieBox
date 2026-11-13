@@ -50,11 +50,11 @@ launch something.
 - Only requests whose `Origin` matches MovieBox's own deployed domain (or
   `localhost` during development) are accepted — not just any webpage that
   happens to know the port.
-- It will only ever launch VLC pointed at this project's own `/api/iptv/vod`
-  or `/api/iptv/live` proxy endpoints, or a direct Xtream Codes stream URL
-  (`/movie|series|live/USER/PASS/ID.ext`) — never an arbitrary URL a page
-  might send it. The real protection is the Origin check above; this is a
-  secondary sanity check, not the security boundary.
+- It will only ever launch VLC pointed at an `http(s)://` URL — never a
+  `javascript:`/`file:`/etc. scheme. The real protection is the Origin
+  check above, not this; stream URLs come from this project's own IPTV
+  proxy as well as third-party CDN/worker hosts (PenguPlay, CNCVerse
+  Bridge, 111477, ...) with no fixed shape to allowlist more tightly.
 - It only ever runs the single command `vlc <url>`. It does not execute
   arbitrary shell input.
 

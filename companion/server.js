@@ -47,22 +47,19 @@ function originAllowed(origin) {
   return /^https:\/\/moviebox-[a-z0-9]+-avc24\.vercel\.app$/.test(origin);
 }
 
-// Only ever launch VLC pointed at either our own proxy's stream endpoints,
-// or a direct Xtream Codes stream URL (/movie|series|live/USER/PASS/ID.ext)
-// — never an arbitrary URL a page might ask for. The direct-URL shape is
-// what VLC hand-off actually uses (see app.js iptvDirectURL): routing VLC
-// through Vercel hit two real problems — this provider's CDN edges
-// inconsistently block Vercel's IPs per-title, and Vercel functions hard-cap
-// execution at 60s, well under a movie's runtime — so VLC connects straight
-// to the provider from this machine's own network instead. The real access
-// control here is the Origin allowlist above, not this path shape; this is
-// just a sanity check against being used as a generic URL launcher.
+// Only ever launch VLC pointed at an http(s) URL. Stream sources now span
+// this project's own IPTV proxy endpoints *and* arbitrary third-party
+// CDN/worker hosts from the Stremio-style sources (PenguPlay, CNCVerse
+// Bridge, 111477, ...) — those don't share a fixed path shape, and the set
+// of hosts changes as sources are added, so there's no fixed allowlist left
+// to check here. The real access control is the Origin allowlist above
+// (only this site's own origins can ask the companion to launch anything at
+// all); this is just a sanity check against a degenerate scheme
+// (javascript:, file:, etc.) slipping through.
 function urlAllowed(raw) {
   let u;
   try { u = new URL(raw); } catch { return false; }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
-  if (/^\/api\/iptv\/(vod|live)$/.test(u.pathname)) return true;
-  return /^\/(movie|series|live)\/[^/]+\/[^/]+\/\d+\.[a-z0-9]+$/i.test(u.pathname);
+  return u.protocol === "https:" || u.protocol === "http:";
 }
 
 // Built from env vars rather than a hardcoded "C:\" — Program Files can
