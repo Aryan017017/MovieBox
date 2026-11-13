@@ -35,6 +35,11 @@ module.exports = async (req, res) => {
   if (!upstream) { res.status(502).send("Couldn't reach upstream"); return; }
 
   res.setHeader("Cache-Control", "no-store");
+  // Permissive — the real access control is the signature check above, not
+  // Origin (this always runs same-origin from the deployed app anyway, but
+  // CORS costs nothing to allow and keeps this usable from a preview/dev
+  // origin too).
+  res.setHeader("Access-Control-Allow-Origin", "*");
   const ct = upstream.headers.get("content-type");
   if (ct) res.setHeader("Content-Type", ct);
   for (const name of ["content-length", "content-range"]) {
