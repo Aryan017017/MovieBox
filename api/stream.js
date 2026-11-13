@@ -14,6 +14,8 @@
 // endpoint can't be abused as an open SSRF proxy to an arbitrary host.
 // Override STREAM_ALLOWED_HOSTS on the Vercel project only if you add a
 // source on a new host.
+const { sign } = require("./iptv/_lib");
+
 const FETCH_TIMEOUT_MS = 15000;
 const DEFAULT_ALLOWED_HOSTS = "pengu.uk,cncverse.dpdns.org,st.111477.xyz";
 
@@ -70,10 +72,21 @@ module.exports = async (req, res) => {
   let data;
   try { data = await upstream.json(); } catch { res.status(200).json({ streams: [] }); return; }
 
+  // fetchUrl is a signed /api/relay link for the same bytes — only the
+  // universal (WASM-transcode) player needs it, for when a native <video
+  // src> fails: that path needs the raw bytes in JS (via fetch()), which
+  // enforces CORS on every hop of a redirect chain, unlike <video>
+  // playback itself. `url` stays the plain upstream link for the fast
+  // native-<video> path, which has no such requirement.
+  const secret = process.env.RELAY_SECRET;
   const streams = Array.isArray(data?.streams)
     ? data.streams
         .filter((s) => s && typeof s.url === "string" && /^https?:\/\//i.test(s.url))
-        .map((s) => ({ url: s.url, name: s.name || s.title || "" }))
+        .map((s) => ({
+          url: s.url,
+          name: s.name || s.title || "",
+          fetchUrl: secret ? `/api/relay?u=${encodeURIComponent(s.url)}&s=${sign(secret, s.url)}` : null,
+        }))
         .slice(0, 10)
     : [];
 
