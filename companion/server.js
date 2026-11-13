@@ -85,7 +85,8 @@ const VLC_CANDIDATES = {
     "/usr/bin/vlc",
     "/usr/local/bin/vlc",
     "/snap/bin/vlc",
-    "/var/lib/flatpak/exports/bin/org.videolan.VLC",
+    "/var/lib/flatpak/exports/bin/org.videolan.VLC", // system-wide `flatpak install` (no --user)
+    `${os.homedir()}/.local/share/flatpak/exports/bin/org.videolan.VLC`, // per-user `flatpak install --user`
   ],
 };
 
