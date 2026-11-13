@@ -3111,6 +3111,7 @@ function loadExternalScript(src) {
 }
 
 function teardownNativePlayer() {
+  stopVlcProgressPolling();
   const p = nativePlayerInst;
   nativePlayerInst = null;
   try { if (p && p.type === "hls") p.inst.destroy(); } catch {}
@@ -3135,7 +3136,7 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
   teardownNativePlayer();
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `<video id="native-video" controls playsinline autoplay></video>
-    <button class="player-vlc-btn" id="player-vlc-btn" title="Copy stream link for VLC" aria-label="Copy stream link for VLC">⧉ VLC</button>
+    <button class="player-vlc-btn" id="player-vlc-btn" title="Open in VLC" aria-label="Open in VLC">⧉ VLC</button>
     <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
   const video = $("#native-video");
   if (seek) video.addEventListener("loadedmetadata", () => { try { video.currentTime = seek; } catch {} }, { once: true });
@@ -3542,15 +3543,113 @@ document.addEventListener("click", (e) => {
   if (document.fullscreenElement === wrap) document.exitFullscreen();
   else wrap.requestFullscreen?.().catch(() => {});
 });
-// Chrome's <video> only decodes H.264/AAC — some PenguPlay streams (HEVC,
-// AC3 audio, etc.) fail there with no fallback possible in-browser. VLC has
-// no such limits, so handing off the raw stream link is the actual fix.
+// Chrome's <video> only decodes H.264/AAC — some streams (HEVC, AC3 audio,
+// etc.) fail there with no fallback possible in-browser. VLC has no such
+// limits, so handing off the raw stream link is the actual fix.
+function isAndroid() { return /Android/i.test(navigator.userAgent); }
+// iPadOS 13+ reports as "Macintosh" with touch support — the only reliable
+// way to tell it apart from real macOS from the UA string alone.
+function isIOS() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+// "Open in VLC" tries the local companion app first (see companion/) — a
+// tiny background process that launches VLC directly via
+// child_process.spawn, no browser sandbox in the way, no download, nothing
+// to register. Only if that's not running does it fall back to a plain
+// vlc:// URI click, which is a silent no-op unless that protocol happens to
+// be registered on the OS.
+const VLC_COMPANION_BASE = `http://127.0.0.1:${53218}`;
+async function tryVlcCompanion(url, title, startTime) {
+  try {
+    const res = await fetch(`${VLC_COMPANION_BASE}/play`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, title, startTime: startTime || undefined }),
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) return false;
+    const j = await res.json().catch(() => null);
+    return !!(j && j.ok);
+  } catch { return false; }
+}
+
+let vlcPollTimer = null;
+function stopVlcProgressPolling() { clearInterval(vlcPollTimer); vlcPollTimer = null; }
+// Once VLC has launched, the companion's own /status (polling VLC's
+// built-in HTTP status interface — see companion/server.js) is the only
+// way to know playback position, since VLC is a separate app that
+// otherwise reports nothing back to the page. Doesn't touch playback
+// itself at all, purely observes it.
+function startVlcProgressPolling(item, ctx, token) {
+  stopVlcProgressPolling();
+  let misses = 0;
+  vlcPollTimer = setInterval(async () => {
+    if (token !== playerAttemptToken || privacy.pauseProgress) { stopVlcProgressPolling(); return; }
+    try {
+      const res = await fetch(`${VLC_COMPANION_BASE}/status`, { signal: AbortSignal.timeout(2000) });
+      const j = await res.json().catch(() => null);
+      if (!j || !j.ok || !(j.length > 0)) {
+        // VLC closed, or its status interface isn't up yet (brief startup
+        // window) — a few misses in a row means it's actually gone.
+        if (++misses >= 4) stopVlcProgressPolling();
+        return;
+      }
+      misses = 0;
+      if (!currentItem || String(item.id) !== String(currentItem.id) || item.type !== currentItem.type) return;
+      applyProgressUpdate(j.time, j.length, ctx.season, ctx.episode);
+    } catch { if (++misses >= 4) stopVlcProgressPolling(); }
+  }, 5000);
+}
+
+async function openInVlc(url, title, startTime) {
+  // The companion is a desktop-only local process — on a phone/tablet
+  // there's nothing at 127.0.0.1 to answer it, and desktop VLC's vlc://
+  // scheme isn't what VLC for Android registers either. Android's
+  // intent:// mechanism is the standard way a mobile page deep-links a
+  // specific installed app, and VLC for Android does handle it.
+  if (isAndroid()) {
+    try {
+      const scheme = url.startsWith("https:") ? "https" : "http";
+      const stripped = url.replace(/^https?:\/\//, "");
+      const fallback = encodeURIComponent("https://play.google.com/store/apps/details?id=org.videolan.vlc");
+      // launchFlags=0x10000000 is FLAG_ACTIVITY_NEW_TASK — without it some
+      // browsers start VLC's activity without bringing it to the
+      // foreground. category=BROWSABLE is required for Chrome to resolve
+      // an intent: URI into an explicit-package launch at all.
+      location.href = `intent://${stripped}#Intent;scheme=${scheme};package=org.videolan.vlc;type=video/*;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;launchFlags=0x10000000;S.browser_fallback_url=${fallback};end`;
+    } catch {}
+    return;
+  }
+  // VLC for iOS registers the vlc:// scheme itself (vlc://<stream-url>
+  // opens straight into it — this is VLC-iOS's own documented external
+  // link format, not a guess). The companion can't exist on a phone
+  // either way, so skip straight to it instead of burning the fetch
+  // timeout on a request nothing will ever answer.
+  if (!isIOS()) {
+    const launched = await tryVlcCompanion(url, title, startTime);
+    if (launched) {
+      showToast("Opening in VLC…");
+      if (currentItem) startVlcProgressPolling(currentItem, playingCtx || {}, playerAttemptToken);
+      return;
+    }
+  }
+  try {
+    const a = document.createElement("a");
+    a.href = "vlc://" + url;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    showToast("Opening in VLC… (install VLC if nothing happens)");
+  } catch {}
+}
+
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#player-vlc-btn")) return;
   if (!currentStreamURL) return;
-  navigator.clipboard?.writeText(currentStreamURL)
-    .then(() => showToast("Stream link copied — open VLC, then Media ▸ Open Network Stream and paste it"))
-    .catch(() => showToast("Couldn't copy — right-click the VLC button isn't available, sorry"));
+  document.getElementById("native-video")?.pause();
+  openInVlc(currentStreamURL, currentItem?.title, lastTimestamp || 0);
 });
 document.addEventListener("fullscreenchange", () => {
   const btn = document.getElementById("player-fs-btn");
