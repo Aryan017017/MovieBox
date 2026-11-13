@@ -3115,6 +3115,7 @@ function teardownNativePlayer() {
   const p = nativePlayerInst;
   nativePlayerInst = null;
   try { if (p && p.type === "hls") p.inst.destroy(); } catch {}
+  try { if (p && p.type === "universal") p.abort(); } catch {}
   const v = document.getElementById("native-video");
   if (v) { try { v.pause(); v.removeAttribute("src"); v.load(); } catch {} }
 }
@@ -3239,6 +3240,54 @@ async function attemptPlayback(item, ctx, seek, token) {
   renderStreamPicker(item, ctx, seek, token, streams);
 }
 
+const UNIVERSAL_PLAYER_SRC = "/universal-player.js";
+
+// Our own in-browser transcoder (universal-player.js) — the real fix for a
+// codec Chrome can't decode (HEVC in particular, regardless of container).
+// Returns true once it has *attempted* playback, successfully or not (the
+// caller shouldn't fall through to the generic "wouldn't play" picker
+// message if this is the reason it didn't work), false only if it couldn't
+// even be loaded/attempted at all.
+async function tryUniversalPlayer(item, ctx, seek, token, stream) {
+  try {
+    if (!window.UniversalPlayer) await loadExternalScript(UNIVERSAL_PLAYER_SRC);
+  } catch { return false; }
+  if (!window.UniversalPlayer || !window.UniversalPlayer.isSupported()) return false;
+
+  teardownNativePlayer();
+  $("#player-wrap").classList.add("active");
+  $("#player-wrap").innerHTML = `<video id="native-video" playsinline></video>
+    <div class="universal-status" id="universal-status">Loading the in-browser converter…</div>
+    <button class="player-vlc-btn" id="player-vlc-btn" title="Open in VLC" aria-label="Open in VLC">⧉ VLC</button>
+    <button class="player-fs-btn" id="player-fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>`;
+  currentStreamURL = stream.url; // VLC button still offers the plain original link
+
+  const video = $("#native-video");
+  const controller = new AbortController();
+  nativePlayerInst = { type: "universal", abort: () => controller.abort() };
+
+  try {
+    await window.UniversalPlayer.play(video, stream.fetchUrl, {
+      signal: controller.signal,
+      onStatus: (s) => { const el = document.getElementById("universal-status"); if (el) el.textContent = s; },
+    });
+  } catch {
+    return true; // attempted; a real failure here means no native fallback would've worked either
+  }
+  if (token !== playerAttemptToken) { controller.abort(); return true; }
+
+  video.addEventListener("timeupdate", () => {
+    if (token !== playerAttemptToken || privacy.pauseProgress) return;
+    if (!currentItem || String(item.id) !== String(currentItem.id) || item.type !== currentItem.type) return;
+    applyProgressUpdate(video.currentTime || 0, video.duration || 0, ctx.season, ctx.episode);
+  });
+  video.addEventListener("ended", () => {
+    if (token !== playerAttemptToken) return;
+    applyProgressUpdate(video.duration || 0, video.duration || 0, ctx.season, ctx.episode);
+  });
+  return true;
+}
+
 // Lets the user pick which stream to play, rather than guessing one
 // automatically — each source can list several qualities/mirrors for the
 // same title and there's no reliable way to know upfront which one will
@@ -3262,17 +3311,23 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       const ext = extFromStreamUrl(stream.url);
       const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, ext);
       if (token !== playerAttemptToken) return; // superseded — user closed or replayed
-      if (!ok) {
-        currentStreamURL = null;
-        // .mkv/.avi/.ts containers routinely fail here even though the
-        // stream itself is fine — Chrome's <video> just can't decode most
-        // of them. VLC has no such limit, hence the pointer instead of a
-        // generic "try another" for exactly those extensions.
-        showToast(["mkv", "avi", "ts"].includes(ext)
-          ? `This browser can't play .${ext} — click it again and hit "Open in VLC" instead, or pick another stream.`
-          : "That stream wouldn't play — pick another.");
-        renderStreamPicker(item, ctx, seek, token, streams);
+      if (ok) return;
+
+      // Native <video> failed — almost always a codec Chrome can't decode
+      // (HEVC in particular), regardless of container. Our own in-browser
+      // converter (universal-player.js) can still play it by transcoding
+      // to H.264/AAC on the fly; it needs the raw bytes via the signed
+      // relay URL (CORS-safe), which only exists when RELAY_SECRET is set
+      // server-side.
+      if (stream.fetchUrl) {
+        const tried = await tryUniversalPlayer(item, ctx, seek, token, stream);
+        if (token !== playerAttemptToken) return;
+        if (tried) return;
       }
+
+      currentStreamURL = null;
+      showToast("That stream wouldn't play — pick another, or try \"Open in VLC\" next time.");
+      renderStreamPicker(item, ctx, seek, token, streams);
     });
   });
 }
