@@ -1,18 +1,21 @@
-// GET /api/pengu/stream?base=&type=movie|tv&imdb=tt1234567[&season=&episode=]
+// GET /api/stream?base=&type=movie|tv&imdb=tt1234567[&season=&episode=]
 //
-// Server-side relay to a PenguPlay-compatible Stremio stream addon (see
-// https://pengu.uk) — its server has no CORS headers (built for the native
-// Stremio app, not browser fetches), so the browser can't call it directly;
-// this just forwards the one request and returns the upstream JSON.
+// Server-side relay to a Stremio-style HTTP stream addon (PenguPlay,
+// CNCVerse Bridge, 111477, ...) — these have no CORS headers (built for the
+// native Stremio app, not browser fetches), so the browser can't call them
+// directly; this just forwards the one request and returns the upstream
+// JSON. The caller (app.js) fans this out once per configured source and
+// merges the results into one picker list.
 //
-// `base` must resolve to a host in PENGU_ALLOWED_HOSTS (comma-separated;
-// defaults to just "pengu.uk" so this works with zero server config) or the
-// request is rejected — same allowlist approach as the IPTV proxy
-// (api/iptv/_lib.js's validServer), which exists so this endpoint can't be
-// abused as an open SSRF proxy to an arbitrary host. Override
-// PENGU_ALLOWED_HOSTS on the Vercel project only if you switch providers.
+// `base` must resolve to a host in STREAM_ALLOWED_HOSTS (comma-separated;
+// defaults to the sources this site ships with, so it works with zero
+// server config) or the request is rejected — same allowlist approach as
+// the IPTV proxy (api/iptv/_lib.js's validServer), which exists so this
+// endpoint can't be abused as an open SSRF proxy to an arbitrary host.
+// Override STREAM_ALLOWED_HOSTS on the Vercel project only if you add a
+// source on a new host.
 const FETCH_TIMEOUT_MS = 15000;
-const DEFAULT_ALLOWED_HOSTS = "pengu.uk";
+const DEFAULT_ALLOWED_HOSTS = "pengu.uk,cncverse.dpdns.org,st.111477.xyz";
 
 function list(value) {
   return String(value || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -33,7 +36,7 @@ module.exports = async (req, res) => {
   if (req.method !== "GET") { res.status(405).send("Method not allowed"); return; }
   const p = new URL(req.url, "http://x").searchParams;
 
-  const base = validBase(p.get("base") || "", process.env.PENGU_ALLOWED_HOSTS || DEFAULT_ALLOWED_HOSTS);
+  const base = validBase(p.get("base") || "", process.env.STREAM_ALLOWED_HOSTS || DEFAULT_ALLOWED_HOSTS);
   if (!base) { res.status(400).json({ streams: [] }); return; }
 
   const type = p.get("type") === "tv" ? "series" : "movie";

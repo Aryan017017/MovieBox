@@ -15,18 +15,27 @@ const YOUTUBE_CHANNELS = [
   { key: "mssp", label: "MSSP", handle: "MSsecretpod" },
   { key: "igr", label: "IGR Podcasts", handle: "IndiaGlobalReview", playlistId: "PLa0gskjtcZLw" }, // "The Palki Sharma Show"
 ];
-// ---- PenguPlay — the only playback source. Play always resolves through
-// it (see attemptPlayback / penguMatch below): TMDB id -> IMDB id -> this
-// addon's /stream endpoint -> the 1080p "2Peckle" stream if one is listed,
-// else the first stream returned -> played natively via <video> (no
-// iframe, no other provider, no IPTV lookup). ----
-// PenguPlay's manifest/stream URL is personal — sign in at https://pengu.uk
-// to get yours, then paste its base (everything before "/manifest.json")
-// here, e.g. "https://pengu.uk/<your-config>". Baked in on purpose (owner's
-// explicit call) so every visitor gets it with zero setup. This IS public —
-// it ships in plain client-side JS to anyone who loads the site or reads
-// the repo.
-const PENGU_BASE = "https://pengu.uk/%7B%22auth_token%22%3A%22sK7xRf8yHVhvUpCr1BVvErq_aP5LK3B6iJ2etDXqYqM%22%7D";
+// ---- Stream sources — the only playback path. Play always resolves
+// through these (see attemptPlayback / fetchAllStreams below): TMDB id ->
+// IMDB id -> each source's Stremio-style /stream endpoint (relayed
+// server-side by api/stream.js) -> every result merged into one list ->
+// the user picks which to play, natively via <video> (no iframe, no IPTV
+// lookup). Each `base` is personal/account-specific or a free guest
+// profile depending on the source — see the comment on each one. Baked in
+// on purpose (owner's explicit call) so every visitor gets them with zero
+// setup. This IS public — it ships in plain client-side JS to anyone who
+// loads the site or reads the repo.
+const STREAM_SOURCES = [
+  // Personal — sign in at https://pengu.uk to get your own, then paste its
+  // base (everything before "/manifest.json") here.
+  { name: "PenguPlay", base: "https://pengu.uk/%7B%22auth_token%22%3A%22sK7xRf8yHVhvUpCr1BVvErq_aP5LK3B6iJ2etDXqYqM%22%7D" },
+  // Free guest profile — cncverse.dpdns.org hands one out with zero sign-in
+  // just by loading /configure; this one was grabbed that way.
+  { name: "CNCVerse Bridge", base: "https://cncverse.dpdns.org/u/p_z04i0vjwd0e0" },
+  // Free, zero-login — the config here is just its default host
+  // (a.111477.xyz), base64-encoded into the URL by st.111477.xyz/configure.
+  { name: "111477", base: "https://st.111477.xyz/config/aHR0cHM6Ly9hLjExMTQ3Ny54eXov" },
+];
 // =========================================================================
 
 const TMDB = "https://api.themoviedb.org/3";
@@ -3078,10 +3087,10 @@ function computeNextEpisode(item, ctx) {
 }
 
 // =========================================================================
-// Playback — PenguPlay only (the one source). TMDB id -> IMDB id -> this
-// addon's /stream endpoint (relayed server-side by api/pengu/stream.js;
-// see PENGU_BASE above) -> the 1080p "2Peckle" stream if the title has one,
-// else the first stream returned -> played natively via <video>, no iframe.
+// Playback — TMDB id -> IMDB id -> every configured source's Stremio-style
+// /stream endpoint (relayed server-side by api/stream.js; see
+// STREAM_SOURCES above), queried in parallel and merged into one list ->
+// the user picks which to play -> played natively via <video>, no iframe.
 // =========================================================================
 const NATIVE_HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
 const NATIVE_START_TIMEOUT_MS = 12000; // cap on the stream actually starting to play
@@ -3173,27 +3182,34 @@ function extFromStreamUrl(url) {
   return m ? m[1].toLowerCase() : "mp4";
 }
 
-// PenguPlay is a Stremio-style HTTP addon: it keys streams by IMDB id (not
+// These are Stremio-style HTTP addons: they key streams by IMDB id (not
 // TMDB), so the title's imdb_id is looked up via TMDB's own external_ids
-// first. Server-side (api/pengu/stream.js) does the actual upstream fetch —
-// PenguPlay's server has no CORS headers (built for the native Stremio app,
-// not browser fetches), so the browser can't call it directly.
-async function penguMatch(item, ctx) {
+// first. Server-side (api/stream.js) does the actual upstream fetch — none
+// of these addons send CORS headers (built for the native Stremio app, not
+// browser fetches), so the browser can't call them directly. Queried in
+// parallel; a source that's down or slow just contributes nothing rather
+// than blocking the others.
+async function fetchAllStreams(item, ctx) {
   try {
     const kind = item.type === "tv" ? "tv" : "movie";
     const extIds = await tmdb(`/${kind}/${item.id}/external_ids`);
     const imdb = extIds && extIds.imdb_id;
-    if (!imdb) return null;
-    const p = new URLSearchParams({ base: PENGU_BASE, type: kind, imdb });
-    if (item.type === "tv") {
-      p.set("season", String(ctx.season || 1));
-      p.set("episode", String(ctx.episode || 1));
-    }
-    const res = await fetch(`/api/pengu/stream?${p}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const j = await res.json();
-    return Array.isArray(j.streams) && j.streams.length ? j.streams : null;
-  } catch { return null; }
+    if (!imdb) return [];
+
+    const results = await Promise.allSettled(STREAM_SOURCES.map(async (source) => {
+      const p = new URLSearchParams({ base: source.base, type: kind, imdb });
+      if (item.type === "tv") {
+        p.set("season", String(ctx.season || 1));
+        p.set("episode", String(ctx.episode || 1));
+      }
+      const res = await fetch(`/api/stream?${p}`, { cache: "no-store" });
+      if (!res.ok) return [];
+      const j = await res.json();
+      return Array.isArray(j.streams) ? j.streams : [];
+    }));
+
+    return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  } catch { return []; }
 }
 
 let playerAttemptToken = 0;
@@ -3202,32 +3218,32 @@ async function attemptPlayback(item, ctx, seek, token) {
   currentStreamURL = null;
   if (item.type !== "movie" && item.type !== "tv") return;
   $("#player-wrap").classList.add("active");
-  $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Loading from PenguPlay…</div>`;
-  const streams = await penguMatch(item, ctx);
+  $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Looking for streams…</div>`;
+  const streams = await fetchAllStreams(item, ctx);
   if (token !== playerAttemptToken) return; // superseded — user closed or replayed
-  if (!streams) {
+  if (!streams.length) {
     teardownNativePlayer();
-    $("#player-wrap").innerHTML = `<div class="player-loading">Couldn't find a PenguPlay stream for this title.</div>`;
+    $("#player-wrap").innerHTML = `<div class="player-loading">Couldn't find a stream for this title.</div>`;
     return;
   }
-  renderPenguPicker(item, ctx, seek, token, streams);
+  renderStreamPicker(item, ctx, seek, token, streams);
 }
 
-// Lets the user pick which PenguPlay stream to play, rather than guessing
-// one automatically — PenguPlay often lists several sources/qualities for
-// the same title and there's no reliable way to know upfront which one
-// will actually play.
-function renderPenguPicker(item, ctx, seek, token, streams) {
+// Lets the user pick which stream to play, rather than guessing one
+// automatically — each source can list several qualities/mirrors for the
+// same title and there's no reliable way to know upfront which one will
+// actually play.
+function renderStreamPicker(item, ctx, seek, token, streams) {
   teardownNativePlayer();
   $("#player-wrap").classList.add("active");
   $("#player-wrap").innerHTML = `
-    <div class="player-loading pengu-picker">
-      <div class="pengu-picker-title">Choose a stream</div>
-      <div class="pengu-stream-list">
-        ${streams.map((s, i) => `<button class="btn-secondary pengu-stream-btn" type="button" data-idx="${i}">${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
+    <div class="player-loading stream-picker">
+      <div class="stream-picker-title">Choose a stream</div>
+      <div class="stream-list">
+        ${streams.map((s, i) => `<button class="btn-secondary stream-btn" type="button" data-idx="${i}">${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
       </div>
     </div>`;
-  $$(".pengu-stream-btn", $("#player-wrap")).forEach((btn) => {
+  $$(".stream-btn", $("#player-wrap")).forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (token !== playerAttemptToken) return;
       const stream = streams[+btn.dataset.idx];
@@ -3238,7 +3254,7 @@ function renderPenguPicker(item, ctx, seek, token, streams) {
       if (!ok) {
         currentStreamURL = null;
         showToast("That stream wouldn't play — pick another.");
-        renderPenguPicker(item, ctx, seek, token, streams);
+        renderStreamPicker(item, ctx, seek, token, streams);
       }
     });
   });
