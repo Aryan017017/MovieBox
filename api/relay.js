@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
   // CORS costs nothing to allow and keeps this usable from a preview/dev
   // origin too).
   res.setHeader("Access-Control-Allow-Origin", "*");
-  await pipeUpstream(res, upstream, upstream.url || t.href, originOf(req), secret);
+  await pipeUpstream(res, upstream, upstream.url || t.href, originOf(req), secret, "/api/relay");
 };
 
 module.exports.config = { maxDuration: 60 };

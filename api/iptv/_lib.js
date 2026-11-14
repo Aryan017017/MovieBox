@@ -61,13 +61,25 @@ function verify(secret, text, sigHex) {
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
-function relayURL(secret, origin, absolute) {
-  return `${origin}/api/iptv/relay?u=${encodeURIComponent(absolute)}&s=${sign(secret, absolute)}`;
+// relayPath defaults to /api/iptv/relay (its original, still-used shape)
+// — api/relay.js (the generic byte-proxy for non-IPTV sources) passes
+// /api/relay instead, which matters beyond just the URL: api/iptv/relay.js
+// force-clamps every response to a 2MB window via upstreamHeaders'
+// forceRange (built for the IPTV provider's huge live/VOD files streamed
+// incrementally). HLS segments from other sources are self-contained units
+// hls.js expects whole in one response — clamping one to 2MB silently
+// truncates it, which parses as a corrupt fragment and throws a fatal
+// SourceBuffer appendBuffer error (verified by hand against a real
+// Cinejoy/Nebula stream). api/relay.js doesn't force-clamp, so segments
+// rewritten through it arrive complete.
+function relayURL(secret, origin, absolute, relayPath) {
+  return `${origin}${relayPath || "/api/iptv/relay"}?u=${encodeURIComponent(absolute)}&s=${sign(secret, absolute)}`;
 }
 
 // Rewrites every URI in an HLS playlist (segments, keys, sub-playlists) to a
-// signed /api/iptv/relay link, so the provider's raw http:// URLs never reach the browser.
-function rewritePlaylist(text, baseUrl, origin, secret) {
+// signed relay link (see relayURL), so the provider's raw http:// URLs
+// never reach the browser.
+function rewritePlaylist(text, baseUrl, origin, secret, relayPath) {
   return text.split(/\r?\n/).map((line) => {
     const t = line.trim();
     if (!t) return line;
@@ -78,13 +90,13 @@ function rewritePlaylist(text, baseUrl, origin, secret) {
       for (const m of matches) {
         let abs;
         try { abs = new URL(m[1], baseUrl).href; } catch { continue; }
-        result = result.replace(m[0], `URI="${relayURL(secret, origin, abs)}"`);
+        result = result.replace(m[0], `URI="${relayURL(secret, origin, abs, relayPath)}"`);
       }
       return result;
     }
     let abs;
     try { abs = new URL(t, baseUrl).href; } catch { return line; }
-    return relayURL(secret, origin, abs);
+    return relayURL(secret, origin, abs, relayPath);
   }).join("\n");
 }
 
@@ -100,14 +112,16 @@ function originOf(req) {
 
 // Forwards an upstream fetch() Response to the Vercel `res`, rewriting HLS
 // playlists to relay links and streaming everything else (segments, .ts) as-is.
-async function pipeUpstream(res, upstreamRes, finalUrl, origin, secret) {
+// relayPath is forwarded to rewritePlaylist — see relayURL's comment for why
+// it matters (api/iptv/relay.js's force-clamped Range vs api/relay.js's not).
+async function pipeUpstream(res, upstreamRes, finalUrl, origin, secret, relayPath) {
   res.setHeader("Cache-Control", "no-store");
 
   if (isPlaylist(upstreamRes.headers.get("content-type"), finalUrl)) {
     if (!secret) { res.status(500).send("RELAY_SECRET is not set on the project"); return; }
     const body = await upstreamRes.text();
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-    res.status(upstreamRes.status).send(rewritePlaylist(body, finalUrl, origin, secret));
+    res.status(upstreamRes.status).send(rewritePlaylist(body, finalUrl, origin, secret, relayPath));
     return;
   }
 
