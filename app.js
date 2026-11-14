@@ -3095,6 +3095,7 @@ function computeNextEpisode(item, ctx) {
 const NATIVE_HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
 const NATIVE_START_TIMEOUT_MS = 12000; // cap on the stream actually starting to play
 let nativePlayerInst = null;
+let lastNativeFailReason = null; // set by tryNativeVideo, read by renderStreamPicker's failure toast
 let currentStreamURL = null; // for the "copy link for VLC" button
 
 const _scriptCache = {};
@@ -3153,6 +3154,13 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
   const retryPlayOnCanPlay = () => { if (video.paused) video.play().catch(() => {}); };
   video.addEventListener("canplay", retryPlayOnCanPlay);
 
+  // Surfaced in the picker's failure toast — a generic "wouldn't play" told
+  // us nothing actionable the last time this needed debugging (the stream
+  // was actually fine; a browser-level play() quirk was the real cause).
+  lastNativeFailReason = null;
+  const onVideoError = () => { lastNativeFailReason = video.error ? `video error ${video.error.code}` : "video error"; };
+  video.addEventListener("error", onVideoError);
+
   let started = false;
   try {
     if (ext === "m3u8") {
@@ -3160,6 +3168,9 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
       if (!window.Hls || !window.Hls.isSupported()) { teardownNativePlayer(); return false; }
       const hls = new window.Hls({ lowLatencyMode: false, maxBufferLength: 30 });
       nativePlayerInst = { type: "hls", inst: hls };
+      hls.on(window.Hls.Events.ERROR, (_e, data) => {
+        lastNativeFailReason = `${data.details || "hls error"}${data.fatal ? " (fatal)" : ""}`;
+      });
       const playing = waitForNativePlaying(video, NATIVE_START_TIMEOUT_MS);
       hls.loadSource(url);
       hls.attachMedia(video);
@@ -3172,8 +3183,10 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
       video.play().catch(() => {});
       started = await playing;
     }
-  } catch { started = false; }
+  } catch (e) { started = false; lastNativeFailReason = String(e && e.message || e); }
   video.removeEventListener("canplay", retryPlayOnCanPlay);
+  video.removeEventListener("error", onVideoError);
+  if (!started && !lastNativeFailReason) lastNativeFailReason = `timed out after ${NATIVE_START_TIMEOUT_MS / 1000}s`;
 
   if (token !== playerAttemptToken) { teardownNativePlayer(); return false; }
   if (!started) { teardownNativePlayer(); return false; }
@@ -3351,7 +3364,8 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       }
 
       currentStreamURL = null;
-      showToast("That stream wouldn't play — pick another, or try \"Open in VLC\" next time.");
+      const reason = lastNativeFailReason ? ` (${lastNativeFailReason})` : "";
+      showToast(`That stream wouldn't play${reason} — pick another, or try "Open in VLC" next time.`);
       renderStreamPicker(item, ctx, seek, token, streams);
     });
   });
