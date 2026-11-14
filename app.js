@@ -3327,8 +3327,12 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       // converter (universal-player.js) can still play it by transcoding
       // to H.264/AAC on the fly; it needs the raw bytes via the signed
       // relay URL (CORS-safe), which only exists when RELAY_SECRET is set
-      // server-side.
-      if (stream.fetchUrl) {
+      // server-side. Never for m3u8 though — it fetches the whole source
+      // as one file and hands it to ffmpeg, but a playlist is just a tiny
+      // text manifest pointing at other files over the network, and ffmpeg
+      // in the WASM sandbox has no network access — it'd hang forever
+      // trying to open references it can never reach (verified by hand).
+      if (stream.fetchUrl && ext !== "m3u8") {
         const tried = await tryUniversalPlayer(item, ctx, seek, token, stream);
         if (token !== playerAttemptToken) return;
         if (tried) return;
