@@ -10,11 +10,23 @@
 // own redirector is permissive. Routing the byte-fetch through this
 // same-origin relay sidesteps that entirely.
 //
+// Also fixes a second, distinct problem for HLS sources: some upstream
+// CDNs behind these addons (e.g. Cinejoy's streams, proxied through
+// nebula.bright67.online) do Referer-based anti-hotlink checks — verified
+// by hand: the exact same request 404s with our site's real Referer but
+// returns 200 with no Referer at all (or the provider's own expected one).
+// A real browser always sends its own page as Referer on a cross-origin
+// request; this server-side fetch sends none, which already passes. For
+// that fix to actually take effect the BROWSER must never talk to the
+// upstream CDN directly at all — so playlist responses get every nested
+// URI (sub-playlists, segments, init segments) rewritten to route back
+// through this same relay too (pipeUpstream/rewritePlaylist, shared with
+// api/iptv/relay.js), not just the top-level request.
+//
 // Only ever serves URLs this project itself signed (api/stream.js, same
 // RELAY_SECRET/sign() as api/iptv/relay.js) — never an arbitrary URL a
 // client hands it, so this can't become an open SSRF proxy.
-const { verify, fetchUpstream } = require("./iptv/_lib");
-const { Readable } = require("stream");
+const { verify, fetchUpstream, pipeUpstream, originOf } = require("./iptv/_lib");
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") { res.status(405).send("Method not allowed"); return; }
@@ -34,31 +46,12 @@ module.exports = async (req, res) => {
   const upstream = await fetchUpstream(t.href, headers);
   if (!upstream) { res.status(502).send("Couldn't reach upstream"); return; }
 
-  res.setHeader("Cache-Control", "no-store");
   // Permissive — the real access control is the signature check above, not
   // Origin (this always runs same-origin from the deployed app anyway, but
   // CORS costs nothing to allow and keeps this usable from a preview/dev
   // origin too).
   res.setHeader("Access-Control-Allow-Origin", "*");
-  const ct = upstream.headers.get("content-type");
-  if (ct) res.setHeader("Content-Type", ct);
-  for (const name of ["content-length", "content-range"]) {
-    const v = upstream.headers.get(name);
-    if (v) res.setHeader(name, v);
-  }
-  if (upstream.headers.get("accept-ranges") || upstream.headers.get("content-range")) {
-    res.setHeader("accept-ranges", "bytes");
-  }
-  res.status(upstream.status);
-  if (!upstream.body) { res.end(); return; }
-  // Seeking/retrying constantly aborts and restarts range requests —
-  // without these handlers, the resulting "other side closed" stream error
-  // is unhandled and crashes the process (same issue as api/iptv/_lib.js's
-  // pipeUpstream, which this mirrors).
-  const nodeStream = Readable.fromWeb(upstream.body);
-  nodeStream.on("error", () => { try { res.end(); } catch {} });
-  res.on("close", () => { try { nodeStream.destroy(); } catch {} });
-  nodeStream.pipe(res);
+  await pipeUpstream(res, upstream, upstream.url || t.href, originOf(req), secret);
 };
 
 module.exports.config = { maxDuration: 60 };

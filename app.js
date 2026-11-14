@@ -3309,7 +3309,16 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       currentStreamURL = stream.url;
       $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Loading…</div>`;
       const ext = extFromStreamUrl(stream.url);
-      const ok = await tryNativeVideo(item, ctx, seek, token, stream.url, ext);
+      // HLS specifically routes through the relay (when available) rather
+      // than the plain upstream URL — some of these CDNs (Cinejoy's
+      // Nebula backend, confirmed by hand) do Referer-based anti-hotlink
+      // checks: 404 for our real Referer, 200 for none at all. The relay
+      // sends no Referer and rewrites every nested playlist/segment URI to
+      // route back through itself too, so the browser never talks to the
+      // upstream CDN directly. Other formats don't need this — they're
+      // one direct request, not a tree of browser-driven sub-requests.
+      const playUrl = ext === "m3u8" && stream.fetchUrl ? stream.fetchUrl : stream.url;
+      const ok = await tryNativeVideo(item, ctx, seek, token, playUrl, ext);
       if (token !== playerAttemptToken) return; // superseded — user closed or replayed
       if (ok) return;
 
