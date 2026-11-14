@@ -3142,6 +3142,17 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
   const video = $("#native-video");
   if (seek) video.addEventListener("loadedmetadata", () => { try { video.currentTime = seek; } catch {} }, { once: true });
 
+  // Chrome sometimes rejects the very first play() with "video-only
+  // background media was paused to save power" (verified by hand against
+  // a real stream that was loading segments/data fine the whole time) and
+  // nothing else ever retries it, so the "playing" event just never
+  // fires and this reports failure even though the stream was never
+  // actually broken. canplay fires once there's enough buffered data to
+  // attempt playback again, which is exactly when a retry is likely to
+  // succeed — repeated play() calls are harmless either way.
+  const retryPlayOnCanPlay = () => { if (video.paused) video.play().catch(() => {}); };
+  video.addEventListener("canplay", retryPlayOnCanPlay);
+
   let started = false;
   try {
     if (ext === "m3u8") {
@@ -3162,6 +3173,7 @@ async function tryNativeVideo(item, ctx, seek, token, url, ext) {
       started = await playing;
     }
   } catch { started = false; }
+  video.removeEventListener("canplay", retryPlayOnCanPlay);
 
   if (token !== playerAttemptToken) { teardownNativePlayer(); return false; }
   if (!started) { teardownNativePlayer(); return false; }
