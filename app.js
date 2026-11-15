@@ -3251,7 +3251,7 @@ async function fetchAllStreams(item, ctx) {
     // Nothing is dropped (still available via "Open in VLC", which has none
     // of Chrome's container limits) — just sorted so the options actually
     // likely to play natively come first in the picker.
-    const riskyContainer = (s) => ["mkv", "avi", "ts"].includes(extFromStreamUrl(s.url));
+    const riskyContainer = (s) => typeof s.url === "string" && ["mkv", "avi", "ts"].includes(extFromStreamUrl(s.url));
     streams.sort((a, b) => Number(riskyContainer(a)) - Number(riskyContainer(b)));
     return streams;
   } catch { return []; }
