@@ -117,7 +117,13 @@ function originOf(req) {
 async function pipeUpstream(res, upstreamRes, finalUrl, origin, secret, relayPath) {
   res.setHeader("Cache-Control", "no-store");
 
-  if (isPlaylist(upstreamRes.headers.get("content-type"), finalUrl)) {
+  // Only rewrite on a genuinely successful response — some upstreams
+  // (PenguPlay/Cinejoy, verified by hand) send an error JSON body with the
+  // *same* "application/vnd.apple.mpegurl" content-type on a 500, and
+  // rewritePlaylist's line-by-line URI rewriting would otherwise mangle
+  // that error text into a nonsense signed "URL", hiding the real upstream
+  // failure behind a confusing one.
+  if (upstreamRes.ok && isPlaylist(upstreamRes.headers.get("content-type"), finalUrl)) {
     if (!secret) { res.status(500).send("RELAY_SECRET is not set on the project"); return; }
     const body = await upstreamRes.text();
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
