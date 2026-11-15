@@ -35,6 +35,15 @@ const STREAM_SOURCES = [
   // Free, zero-login — the config here is just its default host
   // (a.111477.xyz), base64-encoded into the URL by st.111477.xyz/configure.
   { name: "111477", base: "https://st.111477.xyz/config/aHR0cHM6Ly9hLjExMTQ3Ny54eXov" },
+  // Public, zero-config default — returns raw torrent info (infoHash, no
+  // url) rather than a direct link, since no debrid service is configured
+  // here. api/stream.js turns those into a magnet: link instead of
+  // dropping them (see renderStreamPicker's magnet branch below) — not
+  // playable in-browser, but not a dead end either. Paste in a debrid
+  // service's config (torrentio.strem.fun/configure) as this base instead
+  // to make it start returning real urls, which play exactly like the
+  // other sources above with no further code changes.
+  { name: "Torrentio", base: "https://torrentio.strem.fun" },
 ];
 // =========================================================================
 
@@ -3333,13 +3342,33 @@ function renderStreamPicker(item, ctx, seek, token, streams, lastFailedName) {
       <div class="stream-picker-title">Choose a stream</div>
       ${failBanner}
       <div class="stream-list">
-        ${streams.map((s, i) => `<button class="btn-secondary stream-btn" type="button" data-idx="${i}">${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
+        ${streams.map((s, i) => `<button class="btn-secondary stream-btn" type="button" data-idx="${i}">${s.magnet ? "🧲 " : ""}${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
       </div>
     </div>`;
   $$(".stream-btn", $("#player-wrap")).forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (token !== playerAttemptToken) return;
       const stream = streams[+btn.dataset.idx];
+
+      // A torrent-indexer source (Torrentio without a debrid key) with no
+      // direct url — nothing here can stream it (that needs a real
+      // BitTorrent client, which this player deliberately isn't), so hand
+      // the magnet link off to whatever torrent client is installed
+      // instead of trying and failing to play it.
+      if (stream.magnet) {
+        try {
+          const a = document.createElement("a");
+          a.href = stream.magnet;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          showToast("Opening in your torrent client… (install one if nothing happens)");
+        } catch {
+          showToast("Couldn't open the magnet link.");
+        }
+        return;
+      }
+
       currentStreamURL = stream.url;
       $("#player-wrap").innerHTML = `<div class="player-loading"><div class="boot-spinner"></div>Loading…</div>`;
       const ext = extFromStreamUrl(stream.url);

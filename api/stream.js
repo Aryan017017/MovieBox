@@ -17,7 +17,7 @@
 const { sign } = require("./iptv/_lib");
 
 const FETCH_TIMEOUT_MS = 15000;
-const DEFAULT_ALLOWED_HOSTS = "pengu.uk,cncverse.dpdns.org,st.111477.xyz";
+const DEFAULT_ALLOWED_HOSTS = "pengu.uk,cncverse.dpdns.org,st.111477.xyz,torrentio.strem.fun";
 
 function list(value) {
   return String(value || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -78,15 +78,45 @@ module.exports = async (req, res) => {
   // enforces CORS on every hop of a redirect chain, unlike <video>
   // playback itself. `url` stays the plain upstream link for the fast
   // native-<video> path, which has no such requirement.
+  //
+  // Torrentio (and similar torrent-indexer addons) return raw torrent info
+  // — infoHash/fileIdx/sources — instead of a url when no debrid service
+  // is configured upstream: there's no server anywhere that's downloaded
+  // the file yet, only a swarm to join, which needs a real BitTorrent
+  // client (something this relay deliberately isn't — see the player's own
+  // docs on why). Rather than drop these silently, they're turned into a
+  // plain magnet: link for the browser to hand off to whatever torrent
+  // client is installed — not playable here, but not a dead end either.
+  // The moment a debrid key is added to the source's own config, Torrentio
+  // starts returning a real url for the same titles, which the existing
+  // code above already handles with no changes needed.
+  function toMagnet(s) {
+    const trackers = Array.isArray(s.sources)
+      ? s.sources.filter((x) => typeof x === "string" && x.startsWith("tracker:")).map((x) => x.slice("tracker:".length))
+      : [];
+    const dn = encodeURIComponent(s.behaviorHints?.filename || s.title || s.name || "video");
+    const tr = trackers.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
+    return `magnet:?xt=urn:btih:${s.infoHash}&dn=${dn}${tr}`;
+  }
+
   const secret = process.env.RELAY_SECRET;
   const streams = Array.isArray(data?.streams)
     ? data.streams
-        .filter((s) => s && typeof s.url === "string" && /^https?:\/\//i.test(s.url))
-        .map((s) => ({
-          url: s.url,
-          name: s.name || s.title || "",
-          fetchUrl: secret ? `/api/relay?u=${encodeURIComponent(s.url)}&s=${sign(secret, s.url)}` : null,
-        }))
+        .map((s) => {
+          if (!s) return null;
+          if (typeof s.url === "string" && /^https?:\/\//i.test(s.url)) {
+            return {
+              url: s.url,
+              name: s.name || s.title || "",
+              fetchUrl: secret ? `/api/relay?u=${encodeURIComponent(s.url)}&s=${sign(secret, s.url)}` : null,
+            };
+          }
+          if (typeof s.infoHash === "string" && /^[0-9a-f]{40}$/i.test(s.infoHash)) {
+            return { magnet: toMagnet(s), name: s.name || s.title || "" };
+          }
+          return null;
+        })
+        .filter(Boolean)
         .slice(0, 10)
     : [];
 
