@@ -3317,12 +3317,21 @@ async function tryUniversalPlayer(item, ctx, seek, token, stream) {
 // automatically — each source can list several qualities/mirrors for the
 // same title and there's no reliable way to know upfront which one will
 // actually play.
-function renderStreamPicker(item, ctx, seek, token, streams) {
+function renderStreamPicker(item, ctx, seek, token, streams, lastFailedName) {
   teardownNativePlayer();
   $("#player-wrap").classList.add("active");
+  // The failure reason as a persistent line here, not just a toast — a
+  // toast auto-dismisses after ~2.5s, which isn't enough time to actually
+  // read or screenshot it (confirmed by hand: a user re-reported "same
+  // error" with no detail because the toast was already gone by the time
+  // they could look).
+  const failBanner = lastFailedName
+    ? `<div class="stream-fail-banner">"${escapeHTML(lastFailedName)}" failed: ${escapeHTML(lastNativeFailReason || "unknown reason")}</div>`
+    : "";
   $("#player-wrap").innerHTML = `
     <div class="player-loading stream-picker">
       <div class="stream-picker-title">Choose a stream</div>
+      ${failBanner}
       <div class="stream-list">
         ${streams.map((s, i) => `<button class="btn-secondary stream-btn" type="button" data-idx="${i}">${escapeHTML(s.name || s.title || `Stream ${i + 1}`)}</button>`).join("")}
       </div>
@@ -3366,7 +3375,7 @@ function renderStreamPicker(item, ctx, seek, token, streams) {
       currentStreamURL = null;
       const reason = lastNativeFailReason ? ` (${lastNativeFailReason})` : "";
       showToast(`That stream wouldn't play${reason} — pick another, or try "Open in VLC" next time.`);
-      renderStreamPicker(item, ctx, seek, token, streams);
+      renderStreamPicker(item, ctx, seek, token, streams, stream.name || stream.title);
     });
   });
 }
